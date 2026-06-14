@@ -1,0 +1,16 @@
+# Render Blueprint — deploys the FastAPI backend from this repo.
+# In Render: New → Blueprint → connect this repo → it reads this file.
+# You'll be prompted for the two secret env vars below.
+services:
+  - type: web
+    name: label-verifier-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false   # prompted at deploy; never stored in the repo
+      - key: CORS_ORIGINS
+        sync: false   # set to your Vercel frontend URL, e.g. https://<app>.vercel.app
