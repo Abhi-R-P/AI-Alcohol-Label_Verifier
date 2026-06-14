@@ -10,6 +10,7 @@ from typing import Optional
 
 from app.config import get_settings
 from app.rules.engine import evaluate
+from app.rules.validate import validate_label
 from app.schemas import Finding, ImageResult, LabelExtraction, Profile, Timings
 from app.services.extract import ExtractionError, ExtractionTimeout, extract_fields
 from app.services.image import load_and_normalize
@@ -81,9 +82,10 @@ def process_image(
         error = str(exc)
     timings.claude_ms = _ms_since(claude_start)
 
-    # 4. Deterministic rules.
+    # 4. Deterministic rules: verdict + findings, plus per-field validation.
     rules_start = time.perf_counter()
     verdict, findings = evaluate(extraction, ocr.mean_confidence, profile)
+    field_validation = validate_label(extraction, ocr.text)
     timings.rules_ms = _ms_since(rules_start)
 
     findings = extra_findings + findings
@@ -98,6 +100,7 @@ def process_image(
         fields=extraction,
         ocr_confidence=ocr.mean_confidence,
         findings=findings,
+        field_validation=field_validation,
         timings=timings,
         error=error,
     )

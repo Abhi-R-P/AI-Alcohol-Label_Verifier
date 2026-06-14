@@ -48,6 +48,13 @@ class Finding(BaseModel):
     message: str
 
 
+class FieldResult(BaseModel):
+    """Deterministic per-field validation outcome."""
+
+    passed: bool
+    reason: Optional[str] = None
+
+
 class Timings(BaseModel):
     ocr_ms: int = 0
     claude_ms: int = 0
@@ -63,6 +70,7 @@ class ImageResult(BaseModel):
         0.0, description="Mean OCR confidence (0-100) for the image."
     )
     findings: list[Finding] = []
+    field_validation: dict[str, FieldResult] = {}
     timings: Timings = Timings()
     error: Optional[str] = None
 
