@@ -8,11 +8,10 @@ from app.schemas import LabelExtraction, Profile
 COMPLIANT = LabelExtraction(
     brand_name="Old Mill IPA",
     producer="Old Mill Brewing",
-    alcohol_type="IPA",
-    abv_percent=6.5,
+    class_type="IPA",
+    abv=6.5,
     net_contents="355 mL",
-    country_of_origin="USA",
-    government_warning_present=True,
+    government_warning=True,
 )
 HIGH_CONF = 90.0
 
@@ -28,21 +27,21 @@ def test_compliant_label_passes():
 
 
 def test_missing_gov_warning_fails():
-    ext = COMPLIANT.model_copy(update={"government_warning_present": False})
+    ext = COMPLIANT.model_copy(update={"government_warning": False})
     verdict, findings = evaluate(ext, HIGH_CONF)
     assert verdict == "FAIL"
     assert "MISSING_GOV_WARNING" in codes(findings)
 
 
 def test_missing_abv_fails():
-    ext = COMPLIANT.model_copy(update={"abv_percent": None})
+    ext = COMPLIANT.model_copy(update={"abv": None})
     verdict, findings = evaluate(ext, HIGH_CONF)
     assert verdict == "FAIL"
     assert "MISSING_ABV" in codes(findings)
 
 
 def test_abv_out_of_range_warns():
-    ext = COMPLIANT.model_copy(update={"abv_percent": 150.0})
+    ext = COMPLIANT.model_copy(update={"abv": 150.0})
     verdict, findings = evaluate(ext, HIGH_CONF)
     assert verdict == "WARN"
     assert "ABV_OUT_OF_RANGE" in codes(findings)
@@ -90,7 +89,7 @@ def test_abv_within_tolerance_passes():
 
 def test_error_outranks_warn_in_verdict():
     ext = COMPLIANT.model_copy(
-        update={"government_warning_present": False, "abv_percent": 150.0}
+        update={"government_warning": False, "abv": 150.0}
     )
     verdict, findings = evaluate(ext, HIGH_CONF)
     # Has both an error (gov warning) and a warn (abv range) -> FAIL wins.

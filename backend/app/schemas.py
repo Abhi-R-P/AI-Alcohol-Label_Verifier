@@ -17,18 +17,17 @@ class LabelExtraction(BaseModel):
     """
 
     brand_name: Optional[str] = Field(None, description="Product / brand name.")
-    producer: Optional[str] = Field(None, description="Producer, bottler, or importer.")
-    alcohol_type: Optional[str] = Field(
-        None, description="Beverage class, e.g. 'IPA', 'Cabernet Sauvignon', 'Vodka'."
+    class_type: Optional[str] = Field(
+        None, description="Beverage class/type, e.g. 'IPA', 'Cabernet Sauvignon', 'Vodka'."
     )
-    abv_percent: Optional[float] = Field(
+    abv: Optional[float] = Field(
         None, description="Alcohol by volume as a percentage number, e.g. 6.5."
     )
     net_contents: Optional[str] = Field(
         None, description="Net contents / volume statement, e.g. '750 mL', '12 FL OZ'."
     )
-    country_of_origin: Optional[str] = Field(None, description="Country of origin if stated.")
-    government_warning_present: bool = Field(
+    producer: Optional[str] = Field(None, description="Producer, bottler, or importer.")
+    government_warning: bool = Field(
         False,
         description="True only if the government health warning text is present on the label.",
     )

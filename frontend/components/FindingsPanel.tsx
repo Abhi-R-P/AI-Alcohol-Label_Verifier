@@ -31,16 +31,14 @@ export default function FindingsPanel({ result, onClose }: Props) {
         <dd>{fmt(f.brand_name)}</dd>
         <dt>Producer</dt>
         <dd>{fmt(f.producer)}</dd>
-        <dt>Type</dt>
-        <dd>{fmt(f.alcohol_type)}</dd>
+        <dt>Class / type</dt>
+        <dd>{fmt(f.class_type)}</dd>
         <dt>ABV</dt>
-        <dd>{f.abv_percent === null ? "—" : `${f.abv_percent}%`}</dd>
+        <dd>{f.abv === null ? "—" : `${f.abv}%`}</dd>
         <dt>Net contents</dt>
         <dd>{fmt(f.net_contents)}</dd>
-        <dt>Country of origin</dt>
-        <dd>{fmt(f.country_of_origin)}</dd>
         <dt>Gov. warning</dt>
-        <dd>{fmt(f.government_warning_present)}</dd>
+        <dd>{fmt(f.government_warning)}</dd>
         <dt>OCR confidence</dt>
         <dd>{result.ocr_confidence.toFixed(0)} / 100</dd>
       </dl>

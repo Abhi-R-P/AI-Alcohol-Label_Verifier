@@ -32,7 +32,7 @@ def _norm(s: Optional[str]) -> str:
 
 
 def check_gov_warning(ext: LabelExtraction, ocr_conf: float, profile: Optional[Profile]):
-    if not ext.government_warning_present:
+    if not ext.government_warning:
         return Finding(
             code="MISSING_GOV_WARNING",
             severity="error",
@@ -42,31 +42,31 @@ def check_gov_warning(ext: LabelExtraction, ocr_conf: float, profile: Optional[P
 
 
 def check_abv(ext: LabelExtraction, ocr_conf: float, profile: Optional[Profile]):
-    if ext.abv_percent is None:
+    if ext.abv is None:
         return Finding(
             code="MISSING_ABV",
             severity="error",
             message="Alcohol by volume (ABV) not found on the label.",
         )
-    if not (0 < ext.abv_percent < 100):
+    if not (0 < ext.abv < 100):
         return Finding(
             code="ABV_OUT_OF_RANGE",
             severity="warn",
-            message=f"ABV {ext.abv_percent}% is outside the plausible 0-100% range.",
+            message=f"ABV {ext.abv}% is outside the plausible 0-100% range.",
         )
     return None
 
 
 def check_abv_mismatch(ext: LabelExtraction, ocr_conf: float, profile: Optional[Profile]):
-    if profile is None or profile.abv_percent is None or ext.abv_percent is None:
+    if profile is None or profile.abv_percent is None or ext.abv is None:
         return None
     # Allow a small tolerance for OCR/label rounding.
-    if abs(ext.abv_percent - profile.abv_percent) > 0.3:
+    if abs(ext.abv - profile.abv_percent) > 0.3:
         return Finding(
             code="ABV_MISMATCH",
             severity="warn",
             message=(
-                f"ABV {ext.abv_percent}% does not match expected "
+                f"ABV {ext.abv}% does not match expected "
                 f"{profile.abv_percent}%."
             ),
         )

@@ -5,12 +5,11 @@ export type Severity = "error" | "warn" | "info";
 
 export interface LabelExtraction {
   brand_name: string | null;
-  producer: string | null;
-  alcohol_type: string | null;
-  abv_percent: number | null;
+  class_type: string | null;
+  abv: number | null;
   net_contents: string | null;
-  country_of_origin: string | null;
-  government_warning_present: boolean;
+  producer: string | null;
+  government_warning: boolean;
 }
 
 export interface Finding {
