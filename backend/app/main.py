@@ -80,33 +80,17 @@ async def upload_label(file: UploadFile = File(...)) -> ImageResult:
     return process_image(file.filename or "image", raw)
 
 
-@app.post("/batch-upload", response_model=list[ImageResult])
-async def batch_upload(files: list[UploadFile] = File(...)) -> list[ImageResult]:
-    """Batch sibling of /upload-label: run the full flow on each image.
-
-    Images are processed sequentially in a simple loop (no async queue) and the
-    result array preserves upload order.
-    """
-    if not files:
-        raise HTTPException(status_code=400, detail="No files uploaded.")
-    if len(files) > settings.max_files:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Too many files: {len(files)} (max {settings.max_files}).",
-        )
-
-    results: list[ImageResult] = []
-    for upload in files:
-        raw = await _read_image(upload)
-        results.append(process_image(upload.filename or "image", raw))
-    return results
-
-
 @app.post("/verify", response_model=VerifyResponse)
 async def verify(
     files: list[UploadFile] = File(...),
     profile: Optional[str] = Form(None),
 ) -> VerifyResponse:
+    """Batch verify: run the full OCR -> Claude -> validation flow on each image.
+
+    Accepts one or many images plus an optional expected `profile` (JSON). Images
+    are processed sequentially in a simple loop (no async queue); the response
+    carries the per-image results array in upload order plus PASS/WARN/FAIL counts.
+    """
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded.")
     if len(files) > settings.max_files:
