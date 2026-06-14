@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.pipeline import process_image
 from app.rules.engine import rule_catalog
+from app.services.ocr import extract_raw_text
 from app.schemas import (
     Profile,
     RuleInfo,
@@ -46,6 +47,31 @@ def healthz() -> dict:
 def rules() -> list[RuleInfo]:
     """The active rule catalog — powers the UI legend and self-documents the layer."""
     return rule_catalog()
+
+
+@app.post("/upload-label")
+async def upload_label(file: UploadFile = File(...)) -> dict:
+    """OCR a single label image and return the raw extracted text.
+
+    No external APIs — pure local Tesseract OCR with grayscale preprocessing.
+    """
+    if file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type: {file.content_type}.",
+        )
+    raw = await file.read()
+    if len(raw) > settings.max_file_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"{file.filename} exceeds {settings.max_file_bytes} bytes.",
+        )
+    try:
+        text = extract_raw_text(raw, settings.max_image_edge)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {"filename": file.filename, "text": text}
 
 
 @app.post("/verify", response_model=VerifyResponse)

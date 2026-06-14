@@ -35,3 +35,21 @@ def run_ocr(img: Image.Image) -> OcrResult:
     text = " ".join(words)
     mean_conf = sum(confidences) / len(confidences) if confidences else 0.0
     return OcrResult(text=text, mean_confidence=round(mean_conf, 1))
+
+
+def extract_raw_text(raw: bytes, max_edge: int = 1600) -> str:
+    """Image bytes -> raw extracted text string.
+
+    Handles preprocessing (EXIF-orient, grayscale, downscale) via
+    `load_and_normalize`. Returns plain text; raises ValueError if the bytes
+    can't be decoded as an image.
+    """
+    # Imported here to avoid a circular import at module load.
+    from app.services.image import load_and_normalize
+
+    try:
+        img = load_and_normalize(raw, max_edge)
+    except Exception as exc:  # noqa: BLE001 - normalize any decode failure
+        raise ValueError(f"Could not read image: {exc}") from exc
+
+    return run_ocr(img).text
