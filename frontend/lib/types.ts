@@ -12,6 +12,11 @@ export interface LabelExtraction {
   government_warning: boolean;
 }
 
+export interface FieldResult {
+  passed: boolean;
+  reason: string | null;
+}
+
 export interface Finding {
   code: string;
   severity: Severity;
@@ -29,27 +34,10 @@ export interface ImageResult {
   filename: string;
   verdict: Verdict;
   fields: LabelExtraction;
+  ocr_text: string;
   ocr_confidence: number;
   findings: Finding[];
+  field_validation: Record<string, FieldResult>;
   timings: Timings;
   error: string | null;
-}
-
-export interface Summary {
-  total: number;
-  passed: number;
-  warned: number;
-  failed: number;
-}
-
-export interface VerifyResponse {
-  summary: Summary;
-  results: ImageResult[];
-}
-
-export interface Profile {
-  brand_name?: string;
-  abv_percent?: number;
-  net_contents?: string;
-  region?: string;
 }
