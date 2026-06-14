@@ -32,6 +32,22 @@ app.add_middleware(
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp"}
 
 
+async def _read_image(upload: UploadFile) -> bytes:
+    """Validate type/size and return the raw bytes of one uploaded image."""
+    if upload.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type for {upload.filename}: {upload.content_type}.",
+        )
+    raw = await upload.read()
+    if len(raw) > settings.max_file_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"{upload.filename} exceeds {settings.max_file_bytes} bytes.",
+        )
+    return raw
+
+
 @app.get("/healthz")
 def healthz() -> dict:
     """Liveness/readiness: checks Tesseract availability and API key presence."""
@@ -58,20 +74,32 @@ async def upload_label(file: UploadFile = File(...)) -> ImageResult:
     per-stage timings. Speed is bounded by the OCR step plus a single
     timeout-capped Claude call (see EXTRACTION_TIMEOUT_S) to stay under ~5s.
     """
-    if file.content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type: {file.content_type}.",
-        )
-    raw = await file.read()
-    if len(raw) > settings.max_file_bytes:
-        raise HTTPException(
-            status_code=413,
-            detail=f"{file.filename} exceeds {settings.max_file_bytes} bytes.",
-        )
+    raw = await _read_image(file)
     # process_image is the shared OCR -> Claude -> validation orchestration; it
     # captures per-image failures into the result rather than raising.
     return process_image(file.filename or "image", raw)
+
+
+@app.post("/batch-upload", response_model=list[ImageResult])
+async def batch_upload(files: list[UploadFile] = File(...)) -> list[ImageResult]:
+    """Batch sibling of /upload-label: run the full flow on each image.
+
+    Images are processed sequentially in a simple loop (no async queue) and the
+    result array preserves upload order.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded.")
+    if len(files) > settings.max_files:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many files: {len(files)} (max {settings.max_files}).",
+        )
+
+    results: list[ImageResult] = []
+    for upload in files:
+        raw = await _read_image(upload)
+        results.append(process_image(upload.filename or "image", raw))
+    return results
 
 
 @app.post("/verify", response_model=VerifyResponse)
@@ -96,17 +124,7 @@ async def verify(
 
     results = []
     for upload in files:
-        if upload.content_type not in ALLOWED_CONTENT_TYPES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported file type for {upload.filename}: {upload.content_type}.",
-            )
-        raw = await upload.read()
-        if len(raw) > settings.max_file_bytes:
-            raise HTTPException(
-                status_code=413,
-                detail=f"{upload.filename} exceeds {settings.max_file_bytes} bytes.",
-            )
+        raw = await _read_image(upload)
         # Simple synchronous loop — adequate for small MVP batches.
         results.append(process_image(upload.filename or "image", raw, parsed_profile))
 
