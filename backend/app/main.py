@@ -11,8 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.pipeline import process_image
 from app.rules.engine import rule_catalog
-from app.services.ocr import extract_raw_text
 from app.schemas import (
+    ImageResult,
     Profile,
     RuleInfo,
     Summary,
@@ -49,11 +49,14 @@ def rules() -> list[RuleInfo]:
     return rule_catalog()
 
 
-@app.post("/upload-label")
-async def upload_label(file: UploadFile = File(...)) -> dict:
-    """OCR a single label image and return the raw extracted text.
+@app.post("/upload-label", response_model=ImageResult)
+async def upload_label(file: UploadFile = File(...)) -> ImageResult:
+    """Full single-image flow: OCR -> Claude extraction -> validation.
 
-    No external APIs — pure local Tesseract OCR with grayscale preprocessing.
+    Returns one combined result: raw OCR text, the structured fields Claude
+    extracted, deterministic per-field validation, the rolled-up verdict, and
+    per-stage timings. Speed is bounded by the OCR step plus a single
+    timeout-capped Claude call (see EXTRACTION_TIMEOUT_S) to stay under ~5s.
     """
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
@@ -66,12 +69,9 @@ async def upload_label(file: UploadFile = File(...)) -> dict:
             status_code=413,
             detail=f"{file.filename} exceeds {settings.max_file_bytes} bytes.",
         )
-    try:
-        text = extract_raw_text(raw, settings.max_image_edge)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-    return {"filename": file.filename, "text": text}
+    # process_image is the shared OCR -> Claude -> validation orchestration; it
+    # captures per-image failures into the result rather than raising.
+    return process_image(file.filename or "image", raw)
 
 
 @app.post("/verify", response_model=VerifyResponse)

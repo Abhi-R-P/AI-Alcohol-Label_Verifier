@@ -66,6 +66,7 @@ class ImageResult(BaseModel):
     filename: str
     verdict: Verdict
     fields: LabelExtraction
+    ocr_text: str = Field("", description="Raw text extracted by OCR.")
     ocr_confidence: float = Field(
         0.0, description="Mean OCR confidence (0-100) for the image."
     )

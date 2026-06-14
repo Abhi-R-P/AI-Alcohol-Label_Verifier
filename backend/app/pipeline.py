@@ -98,6 +98,7 @@ def process_image(
         filename=filename,
         verdict=verdict,
         fields=extraction,
+        ocr_text=ocr.text,
         ocr_confidence=ocr.mean_confidence,
         findings=findings,
         field_validation=field_validation,
