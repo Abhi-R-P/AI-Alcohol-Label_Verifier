@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.pipeline import process_image
-from app.rules.engine import rule_catalog
+from app.rules.validate import rule_catalog
 from app.schemas import (
     ImageResult,
     Profile,
@@ -42,6 +42,8 @@ async def _read_image(upload: UploadFile) -> bytes:
             detail=f"Unsupported file type for {upload.filename}: {upload.content_type}.",
         )
     raw = await upload.read()
+    if len(raw) == 0:
+        raise HTTPException(status_code=400, detail=f"{upload.filename} is empty.")
     if len(raw) > settings.max_file_bytes:
         raise HTTPException(
             status_code=413,

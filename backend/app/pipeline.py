@@ -9,7 +9,6 @@ import time
 from typing import Optional
 
 from app.config import get_settings
-from app.rules.engine import evaluate
 from app.rules.validate import validate_label
 from app.schemas import Finding, ImageResult, LabelExtraction, Profile, Timings
 from app.services.extract import ExtractionError, ExtractionTimeout, extract_fields
@@ -92,13 +91,19 @@ def process_image(
         error = str(exc)
     timings.claude_ms = _ms_since(claude_start)
 
-    # 4. Deterministic rules: verdict + findings, plus per-field validation.
+    # 4. Deterministic rules — single engine returns verdict + per-field
+    #    results + soft warnings.
     rules_start = time.perf_counter()
-    verdict, findings = evaluate(extraction, ocr.mean_confidence, profile)
-    field_validation = validate_label(extraction, ocr.text)
+    verdict, field_validation, warnings = validate_label(
+        extraction,
+        ocr_text=ocr.text,
+        ocr_confidence=ocr.mean_confidence,
+        profile=profile,
+        ocr_threshold=settings.ocr_confidence_threshold,
+    )
     timings.rules_ms = _ms_since(rules_start)
 
-    findings = extra_findings + findings
+    findings = extra_findings + warnings
     # An extraction error is itself an error-severity finding -> FAIL.
     if any(f.severity == "error" for f in findings):
         verdict = "FAIL"

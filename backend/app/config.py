@@ -22,10 +22,16 @@ def _get_int(name: str, default: int) -> int:
 class Settings:
     def __init__(self) -> None:
         self.anthropic_api_key: str | None = os.environ.get("ANTHROPIC_API_KEY")
-        self.extraction_model: str = os.environ.get("EXTRACTION_MODEL", "claude-opus-4-8")
+        # Haiku is the fastest tier and is more than capable of structured
+        # extraction from short OCR text — the right default for the <5s budget.
+        # Override with EXTRACTION_MODEL=claude-sonnet-4-6 / claude-opus-4-8 for
+        # higher accuracy at the cost of latency.
+        self.extraction_model: str = os.environ.get("EXTRACTION_MODEL", "claude-haiku-4-5")
         self.max_files: int = _get_int("MAX_FILES", 10)
         self.max_file_bytes: int = _get_int("MAX_FILE_MB", 10) * 1024 * 1024
-        self.max_image_edge: int = _get_int("MAX_IMAGE_EDGE", 1600)
+        # Smaller long-edge => faster OCR. 1280 keeps label text legible while
+        # cutting Tesseract CPU time on constrained hosts.
+        self.max_image_edge: int = _get_int("MAX_IMAGE_EDGE", 1280)
         self.extraction_timeout_s: float = _get_float("EXTRACTION_TIMEOUT_S", 4.0)
         self.ocr_confidence_threshold: float = _get_float("OCR_CONFIDENCE_THRESHOLD", 55.0)
         self.cors_origins: list[str] = [

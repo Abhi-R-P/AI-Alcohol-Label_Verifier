@@ -14,3 +14,5 @@ services:
         sync: false   # prompted at deploy; never stored in the repo
       - key: CORS_ORIGINS
         sync: false   # set to your Vercel frontend URL, e.g. https://<app>.vercel.app
+      - key: EXTRACTION_MODEL
+        value: claude-haiku-4-5   # fastest tier for the <5s/image target
