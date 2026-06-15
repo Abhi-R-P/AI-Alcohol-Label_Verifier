@@ -60,7 +60,7 @@ export default function Home() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/logo.png"
-          alt="Organization logo"
+          alt="DOT — Alcohol and Tobacco Tax and Trade Bureau"
           className="h-14 w-14 flex-none object-contain"
           onError={(e) => {
             e.currentTarget.style.display = "none";
