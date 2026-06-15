@@ -1,51 +1,50 @@
-import type { ImageResult } from "../lib/types";
+import type { ImageResult, LabelExtraction } from "../lib/types";
 
-// Plain-language labels and a friendly order for non-technical readers.
-const FIELDS: { key: string; label: string }[] = [
-  { key: "government_warning", label: "Government warning" },
-  { key: "abv", label: "Alcohol by volume (ABV)" },
-  { key: "brand_name", label: "Brand name" },
-  { key: "class_type", label: "Class / type" },
-  { key: "net_contents", label: "Net contents" },
-  { key: "producer", label: "Producer" },
+// Plain-language labels + how to render each extracted value, in reading order.
+const FIELDS: { key: string; label: string; value: (f: LabelExtraction) => string }[] = [
+  { key: "government_warning", label: "Government warning", value: (f) => (f.government_warning ? "Present" : "Not found") },
+  { key: "abv", label: "Alcohol by volume (ABV)", value: (f) => (f.abv == null ? "—" : `${f.abv}%`) },
+  { key: "brand_name", label: "Brand name", value: (f) => f.brand_name ?? "—" },
+  { key: "class_type", label: "Class / type", value: (f) => f.class_type ?? "—" },
+  { key: "net_contents", label: "Net contents", value: (f) => f.net_contents ?? "—" },
+  { key: "producer", label: "Producer", value: (f) => f.producer ?? "—" },
 ];
 
-export default function LabelResult({ result }: { result: ImageResult }) {
+export default function LabelResult({
+  result,
+  thumbnail,
+}: {
+  result: ImageResult;
+  thumbnail?: string;
+}) {
   const checks = result.field_validation;
-  // Order known fields first, then any extras the backend may add later.
-  const ordered = [
-    ...FIELDS.filter((f) => f.key in checks),
-    ...Object.keys(checks)
-      .filter((k) => !FIELDS.some((f) => f.key === k))
-      .map((k) => ({ key: k, label: k })),
-  ];
-  const failedCount = ordered.filter(({ key }) => !checks[key].passed).length;
-  const overallPass = ordered.length > 0 && failedCount === 0;
+  const rows = FIELDS.filter((f) => f.key in checks);
+  const failedCount = rows.filter(({ key }) => !checks[key].passed).length;
+  const overallPass = rows.length > 0 && failedCount === 0;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      {/* Overall status banner — the first thing a reader sees. */}
-      <div
-        className={`flex items-center justify-between px-5 py-4 ${
-          overallPass ? "bg-green-50" : "bg-red-50"
-        }`}
-      >
-        <div>
-          <h3 className="truncate text-sm font-medium text-slate-500">{result.filename}</h3>
-          <p
-            className={`text-lg font-bold ${
-              overallPass ? "text-green-700" : "text-red-700"
-            }`}
-          >
+      {/* Overall status banner. */}
+      <div className={`flex items-center gap-3 px-5 py-4 ${overallPass ? "bg-green-50" : "bg-red-50"}`}>
+        {thumbnail && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={thumbnail}
+            alt=""
+            className="h-12 w-12 flex-none rounded-lg object-cover ring-1 ring-black/5"
+          />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-slate-500">{result.filename}</p>
+          <p className={`text-lg font-bold ${overallPass ? "text-green-700" : "text-red-700"}`}>
             {overallPass
               ? "PASS — all checks passed"
               : `FAIL — ${failedCount} issue${failedCount === 1 ? "" : "s"} found`}
           </p>
         </div>
-        {/* Decorative — the status sentence above already conveys PASS/FAIL. */}
         <span
           aria-hidden
-          className={`rounded-full px-3 py-1 text-sm font-extrabold ${
+          className={`flex-none rounded-full px-3 py-1 text-sm font-extrabold ${
             overallPass ? "bg-green-600 text-white" : "bg-red-600 text-white"
           }`}
         >
@@ -53,9 +52,9 @@ export default function LabelResult({ result }: { result: ImageResult }) {
         </span>
       </div>
 
-      {/* Field-by-field checklist. */}
+      {/* Field-by-field checklist with the value Claude extracted. */}
       <ul className="divide-y divide-slate-100">
-        {ordered.map(({ key, label }) => {
+        {rows.map(({ key, label, value }) => {
           const { passed, reason } = checks[key];
           return (
             <li key={key} className="flex items-start gap-3 px-5 py-3">
@@ -67,18 +66,30 @@ export default function LabelResult({ result }: { result: ImageResult }) {
               >
                 {passed ? "✓" : "✗"}
               </span>
-              <div className="min-w-0">
-                <p className="font-medium text-slate-800">{label}</p>
-                {passed ? (
-                  <p className="text-sm text-green-700">Passed</p>
-                ) : (
-                  <p className="text-sm text-red-700">{reason ?? "Failed"}</p>
-                )}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="font-medium text-slate-800">{label}</span>
+                  <span className="truncate text-sm text-slate-500" title={value(result.fields)}>
+                    {value(result.fields)}
+                  </span>
+                </div>
+                {!passed && reason && <p className="text-sm text-red-700">{reason}</p>}
               </div>
             </li>
           );
         })}
       </ul>
+
+      {/* Soft warnings / notes (low OCR confidence, profile mismatches, etc.). */}
+      {result.findings.length > 0 && (
+        <div className="border-t border-slate-100 bg-amber-50/60 px-5 py-3">
+          {result.findings.map((f, i) => (
+            <p key={i} className="text-sm text-amber-800">
+              {f.message}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
