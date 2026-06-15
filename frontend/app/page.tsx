@@ -61,7 +61,7 @@ export default function Home() {
         <img
           src="/logo.png"
           alt="DOT — Alcohol and Tobacco Tax and Trade Bureau"
-          className="h-14 w-14 flex-none object-contain"
+          className="h-20 w-auto flex-none object-contain"
           onError={(e) => {
             e.currentTarget.style.display = "none";
           }}
