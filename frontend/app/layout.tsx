@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Alcohol Label Verifier",
+  title: "TTB AI Alcohol Label Verifier",
   description: "Batch-verify alcohol labels with OCR + Claude extraction + rules.",
 };
 
