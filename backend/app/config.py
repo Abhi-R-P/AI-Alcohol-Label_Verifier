@@ -29,7 +29,7 @@ class Settings:
         self.extraction_timeout_s: float = _get_float("EXTRACTION_TIMEOUT_S", 4.0)
         self.ocr_confidence_threshold: float = _get_float("OCR_CONFIDENCE_THRESHOLD", 55.0)
         self.cors_origins: list[str] = [
-            o.strip()
+            o.strip().rstrip("/")  # tolerate trailing slashes; browsers send none
             for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
             if o.strip()
         ]

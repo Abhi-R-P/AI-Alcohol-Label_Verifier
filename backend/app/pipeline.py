@@ -80,6 +80,16 @@ def process_image(
             )
         )
         error = str(exc)
+    except Exception as exc:  # noqa: BLE001 - never let extraction 500 the request
+        extraction = LabelExtraction()
+        extra_findings.append(
+            Finding(
+                code="EXTRACTION_FAILED",
+                severity="error",
+                message=f"Field extraction failed: {exc}",
+            )
+        )
+        error = str(exc)
     timings.claude_ms = _ms_since(claude_start)
 
     # 4. Deterministic rules: verdict + findings, plus per-field validation.

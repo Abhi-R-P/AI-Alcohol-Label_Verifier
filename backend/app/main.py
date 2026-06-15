@@ -22,9 +22,11 @@ from app.schemas import (
 app = FastAPI(title="AI Alcohol Label Verifier", version="0.1.0")
 
 settings = get_settings()
+# CORS_ORIGINS="*" allows any origin (handy for a demo); otherwise exact match.
+_allow_all = "*" in settings.cors_origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=["*"] if _allow_all else settings.cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
