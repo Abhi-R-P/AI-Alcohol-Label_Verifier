@@ -31,7 +31,7 @@ export default function LabelResult({ result }: { result: ImageResult }) {
         }`}
       >
         <div>
-          <p className="truncate text-sm font-medium text-slate-500">{result.filename}</p>
+          <h3 className="truncate text-sm font-medium text-slate-500">{result.filename}</h3>
           <p
             className={`text-lg font-bold ${
               overallPass ? "text-green-700" : "text-red-700"
@@ -42,7 +42,9 @@ export default function LabelResult({ result }: { result: ImageResult }) {
               : `FAIL — ${failedCount} issue${failedCount === 1 ? "" : "s"} found`}
           </p>
         </div>
+        {/* Decorative — the status sentence above already conveys PASS/FAIL. */}
         <span
+          aria-hidden
           className={`rounded-full px-3 py-1 text-sm font-extrabold ${
             overallPass ? "bg-green-600 text-white" : "bg-red-600 text-white"
           }`}

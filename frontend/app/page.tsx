@@ -35,7 +35,11 @@ export default function Home() {
       </p>
 
       <form onSubmit={handleSubmit} className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
+        <label htmlFor="label-files" className="sr-only">
+          Choose one or more label images
+        </label>
         <input
+          id="label-files"
           type="file"
           accept="image/png,image/jpeg,image/webp"
           multiple
@@ -51,6 +55,7 @@ export default function Home() {
           <button
             type="submit"
             disabled={loading || files.length === 0}
+            aria-busy={loading}
             className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
           >
             {loading ? "Verifying…" : "Verify labels"}
@@ -59,12 +64,18 @@ export default function Home() {
       </form>
 
       {error && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div
+          role="alert"
+          className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+        >
           {error}
         </div>
       )}
 
-      <div className="mt-6 space-y-4">
+      <div className="mt-6 space-y-4" aria-live="polite" aria-busy={loading}>
+        {results.length > 0 && (
+          <h2 className="sr-only">{results.length} label result{results.length > 1 ? "s" : ""}</h2>
+        )}
         {results.map((result, i) => (
           <LabelResult key={i} result={result} />
         ))}
