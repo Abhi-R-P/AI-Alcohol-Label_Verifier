@@ -55,14 +55,26 @@ export default function Home() {
 
   return (
     <main className="mx-auto max-w-3xl px-5 py-12">
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-          AI Alcohol Label Verifier
-        </h1>
-        <p className="mt-2 text-slate-500">
-          Upload one or more label images — each is read with OCR, structured by Claude,
-          and checked against the compliance rules.
-        </p>
+      <header className="mb-8 flex items-center gap-4">
+        {/* Logo lives at frontend/public/logo.png. Hidden gracefully if absent. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/logo.png"
+          alt="Organization logo"
+          className="h-14 w-14 flex-none object-contain"
+          onError={(e) => {
+            e.currentTarget.style.display = "none";
+          }}
+        />
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+            AI Alcohol Label Verifier
+          </h1>
+          <p className="mt-2 text-slate-500">
+            Upload one or more label images — each is read with OCR, structured by Claude,
+            and checked against the compliance rules.
+          </p>
+        </div>
       </header>
 
       <form onSubmit={handleSubmit}>
