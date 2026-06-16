@@ -18,6 +18,52 @@ Next.js (upload + results)  ──POST /verify──▶  FastAPI
 Claude only **extracts** fields; it never decides compliance. All pass/fail
 logic lives in `backend/app/rules/` and is unit-tested.
 
+## Features
+
+- **Single and batch image uploads** — verify one label (`POST /upload-label`) or
+  many in a single request (`POST /verify`).
+- **OCR-based label extraction** — Tesseract reads the raw text off each image.
+- **Claude-powered structured extraction** — the OCR text is turned into typed
+  fields (brand, class/type, ABV, net contents, producer, government warning).
+- **Deterministic rule-based validation** — a pure-Python engine checks each
+  field against the compliance rules.
+- **PASS / WARN / FAIL verdicts** — a single roll-up status per image.
+- **Itemized findings** — per-field pass/fail with reasons, plus soft warnings
+  (e.g. low OCR confidence, profile mismatch).
+
+## Approach
+
+The pipeline is a linear, inspectable sequence:
+
+```
+OCR  →  Claude extraction  →  Rule engine  →  Verdict
+```
+
+1. **OCR** lifts raw text from the image (with grayscale/resize preprocessing).
+2. **Claude extraction** maps that noisy text into a strict, typed schema via a
+   forced tool call — a single API call, no multi-step reasoning.
+3. **Rule engine** applies deterministic checks to the extracted fields.
+4. **Verdict** rolls the field results up into PASS / WARN / FAIL.
+
+**Claude is used only for structured extraction — it never makes a compliance
+decision.** The boundary is deliberate: extracting fields from messy OCR is a
+fuzzy, language-shaped task an LLM is well suited to, whereas a compliance
+verdict must be **auditable, reproducible, and explainable**. Deterministic
+validation gives identical output for identical input, is unit-testable, and lets
+every PASS/FAIL be traced to a specific rule — properties a regulatory workflow
+needs and that a non-deterministic model can't guarantee.
+
+## Tools Used
+
+- **Frontend:** Next.js (App Router), React, TypeScript, Tailwind CSS.
+- **Backend:** FastAPI, Uvicorn, Pydantic (Python 3.11).
+- **OCR:** Tesseract via `pytesseract`, with Pillow for image preprocessing.
+- **AI model:** Anthropic Claude (`claude-haiku-4-5` by default for latency;
+  `claude-sonnet-4-6` / `claude-opus-4-8` configurable), using tool-use for
+  schema-constrained output.
+- **Testing & CI:** `pytest`, with a GitHub Actions workflow running the rule tests.
+- **Deployment:** Docker (backend) on Render, Vercel (frontend).
+
 ## Layout
 
 - `backend/` — FastAPI service (`app/`), pipeline, rule engine, tests.
@@ -40,6 +86,7 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 Endpoints:
+- `POST /upload-label` — `multipart/form-data`: a single `file`; returns one result.
 - `POST /verify` — `multipart/form-data`: `files` (1..N images) + optional `profile` (JSON).
 - `GET /rules` — the active rule catalog.
 - `GET /healthz` — checks Tesseract + API key.
@@ -61,6 +108,33 @@ npm run dev                        # http://localhost:3000
 
 ## Model
 
-Extraction defaults to `claude-opus-4-8`. For tighter latency/cost on this
-OCR-text task, set `EXTRACTION_MODEL=claude-sonnet-4-6` (or `claude-haiku-4-5`)
-in `backend/.env` — both support structured outputs.
+Extraction defaults to `claude-haiku-4-5` to keep per-image latency under the
+~5s target. For higher accuracy at the cost of latency, set
+`EXTRACTION_MODEL=claude-sonnet-4-6` (or `claude-opus-4-8`) in `backend/.env`.
+
+## Assumptions & Tradeoffs
+
+- **Prototype scope vs. full TTB compliance** — implements a representative
+  subset of checks (government warning phrase, ABV presence/range, required
+  fields), not the complete 27 CFR ruleset. The architecture is built to extend.
+- **Sequential batch processing** — images are processed in a simple loop, not an
+  async queue. Clear and correct for small batches; not tuned for high throughput.
+- **OCR quality limitations** — accuracy depends on photo quality; low-confidence
+  reads are flagged rather than silently trusted, and no advanced image cleanup
+  is applied.
+- **No persistence or auth** — results are returned per request and nothing is
+  stored; there are no user accounts. Appropriate for a prototype, not production.
+- **Deterministic validation over AI-driven compliance** — accepts slightly more
+  rule-writing effort in exchange for auditable, reproducible, testable verdicts.
+
+## Prototype Scope / Requirements Addressed
+
+- **Automated routine verification** — removes manual field-by-field checking.
+- **Batch processing** — multiple labels verified in one request.
+- **Human-readable results** — a per-field checklist with reasons and a clear
+  PASS / WARN / FAIL verdict.
+- **Simple workflow for non-technical users** — drag-and-drop upload, plain-language
+  field labels, no jargon required to interpret results.
+- **Extensible rules architecture** — rules live in one engine
+  (`backend/app/rules/validate.py`); adding a check is a localized change plus a
+  catalog entry, with unit tests alongside.
