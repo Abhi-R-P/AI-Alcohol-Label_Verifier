@@ -28,7 +28,7 @@ for the frontend's `NEXT_PUBLIC_API_BASE`.
 6. Verify:
    ```bash
    curl https://label-verifier-api.onrender.com/healthz
-   # {"status":"ok","tesseract":true,"api_key_configured":true,"model":"claude-opus-4-8"}
+   # {"status":"ok","tesseract":true,"api_key_configured":true,"model":"claude-haiku-4-5"}
    ```
    `tesseract` must be `true` and `api_key_configured` must be `true`.
 
@@ -85,7 +85,7 @@ CORS_ORIGINS = https://label-verifier.vercel.app,http://localhost:3000
 |------------------------|----------|-------------------------------------------|-------|
 | `ANTHROPIC_API_KEY`    | **Yes**  | `sk-ant-...`                              | Your Claude API key. |
 | `CORS_ORIGINS`         | **Yes**  | `https://app.vercel.app`                  | The frontend origin(s), comma-separated. |
-| `EXTRACTION_MODEL`     | No       | `claude-opus-4-8`                         | Default; set `claude-sonnet-4-6` for lower latency/cost. |
+| `EXTRACTION_MODEL`     | No       | `claude-haiku-4-5`                        | Default (fastest, for the <5s target); set `claude-sonnet-4-6` / `claude-opus-4-8` for higher accuracy. |
 | `EXTRACTION_TIMEOUT_S` | No       | `4.0`                                     | Per-image Claude timeout. |
 | `MAX_FILES`            | No       | `10`                                      | Batch cap. |
 | `MAX_FILE_MB`          | No       | `10`                                      | Per-file size cap. |

@@ -26,7 +26,7 @@ The frontend shows a per-image verdict: `PASS`, `WARN`, or `FAIL` with itemized 
 │   └──────┬───────┘   │   FAIL chips │   └────────────────────────────┘    │
 │          │           └──────────────┘                                      │
 └──────────┼─────────────────────────────────────────────────────────────  ┘
-           │  multipart/form-data  (POST /api/verify)
+           │  multipart/form-data  (POST /verify · single: POST /upload-label)
            ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                         FastAPI Backend (Python)                           │
@@ -40,8 +40,8 @@ The frontend shows a per-image verdict: `PASS`, `WARN`, or `FAIL` with itemized 
 │      │           │   │            │   │   JSON)      │   │   Python)   │  │
 │      └───────────┘   └────────────┘   └──────┬───────┘   └──────┬──────┘  │
 │                                              │                  │         │
-│                                       Anthropic API      rules/*.py       │
-│                                       (claude-sonnet-4-6)                  │
+│                                       Anthropic API   rules/validate.py    │
+│                                       (claude-haiku-4-5)                   │
 │                                                                            │
 │   Aggregate per-image results ──► JSON response                           │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -50,33 +50,41 @@ The frontend shows a per-image verdict: `PASS`, `WARN`, or `FAIL` with itemized 
 ### Why this shape
 - **OCR before Claude** keeps the LLM input small (text, not raw image bytes),
   which lowers token cost and latency and keeps extraction deterministic-ish.
-  Claude's vision can read the label directly — kept as a fallback path for
-  low-confidence OCR (see §7).
+  (Claude vision on the raw image is a possible future fallback for low-confidence
+  OCR — not implemented; see §7.)
 - **Rules stay out of the LLM.** Compliance logic is deterministic, auditable,
   and testable. Claude only *extracts*; it never *decides* pass/fail.
 
 ## 3. Request Flow
 
-1. User selects N images in the Next.js upload form and submits.
-2. Frontend POSTs `multipart/form-data` to FastAPI `POST /verify` (one request,
-   N files). An optional `profile` field carries expected values (brand, ABV,
-   volume) to validate against.
-3. Backend loops over each `UploadFile`:
+1. User selects one or more images in the Next.js page (drag-and-drop or browse)
+   and submits.
+2. Frontend posts `multipart/form-data`: a single image → `POST /upload-label`;
+   multiple → `POST /verify` (with an optional `profile` field carrying expected
+   brand / ABV / net-contents to validate against). Both run the same per-image
+   pipeline below.
+3. Backend processes each `UploadFile` (a simple sequential loop for `/verify`):
    1. **Decode & normalize** — open with Pillow, auto-orient, downscale to a max
-      edge (~1600px), grayscale. Bounds the OCR + upload cost.
+      edge (~1280px), grayscale. Bounds OCR cost.
    2. **OCR** — Tesseract (`pytesseract`) returns raw text + mean confidence.
-   3. **Extract** — send raw text to Claude with a strict JSON schema (tool/
-      structured output). Returns typed fields: `brand_name`, `abv_percent`,
-      `net_contents`, `government_warning_present`, `country_of_origin`,
-      `producer`, etc., each with a `found`/`confidence` marker.
-   4. **Validate** — pass extracted fields through `rules/` engine. Each rule
-      yields a `Finding{code, severity, message}`.
-   5. Build `ImageResult{filename, verdict, fields, findings, timings}`.
-4. Backend returns `{ results: [...], summary: {...} }`.
-5. Frontend renders a results grid; clicking a card opens the findings panel.
+   3. **Extract** — send the OCR text to Claude with a **forced tool call** whose
+      input schema is the six fields, yielding schema-validated JSON. Returns
+      typed values: `brand_name`, `class_type`, `abv`, `net_contents`,
+      `producer`, `government_warning` (null when absent; no per-field confidence).
+      A client timeout bounds latency; on timeout the image degrades to OCR-only
+      with an `EXTRACTION_TIMEOUT` warning rather than failing.
+   4. **Validate** — pass the fields (plus OCR text, OCR confidence, profile)
+      through `rules/validate.py`, which returns a `verdict`, a per-field
+      `{passed, reason}` map (`field_validation`), and soft `warnings`.
+   5. Build `ImageResult{filename, verdict, fields, ocr_text, ocr_confidence,
+      field_validation, findings, timings, error}`.
+4. `/upload-label` returns one `ImageResult`; `/verify` returns
+   `{ summary: {total, passed, warned, failed}, results: [...] }`.
+5. Frontend renders a result card per image: overall PASS/WARN/FAIL plus the
+   field-by-field checklist with extracted values and reasons.
 
 Per-image latency budget (≤ 5s target):
-`decode ~150ms · OCR ~600–1200ms · Claude ~1–2.5s · rules <10ms` → ~2–4s typical.
+`decode ~150ms · OCR ~0.5–1.2s · Claude (haiku) ~0.7–2s · rules <10ms` → typically under 5s.
 
 ## 4. Folder Structure
 
@@ -84,71 +92,91 @@ Per-image latency budget (≤ 5s target):
 ai-alcohol-label-verifier/
 ├── DESIGN.md
 ├── README.md
+├── DEPLOY.md                         # Render/Railway + Vercel deploy guide
+├── render.yaml                       # Render Blueprint (backend)
+├── .github/workflows/
+│   └── backend-tests.yml            # CI: runs the rule tests on push
 │
-├── frontend/                        # Next.js (App Router, TS)
+├── frontend/                        # Next.js (App Router, TS, Tailwind)
 │   ├── app/
-│   │   ├── page.tsx                  # upload + results view
-│   │   └── layout.tsx
+│   │   ├── page.tsx                  # upload (drag-drop) + results view
+│   │   ├── layout.tsx
+│   │   └── globals.css              # Tailwind directives
 │   ├── components/
-│   │   ├── UploadForm.tsx            # multi-file picker + submit
-│   │   ├── ResultsGrid.tsx          # PASS/WARN/FAIL cards
-│   │   └── FindingsPanel.tsx        # extracted fields + rule findings
+│   │   └── LabelResult.tsx          # per-image card: verdict + field checklist
 │   ├── lib/
-│   │   └── api.ts                    # fetch wrapper -> /verify
+│   │   ├── api.ts                    # fetch wrapper -> /upload-label, /verify
+│   │   └── types.ts                  # mirrors backend schemas
+│   ├── public/                       # static assets (e.g. logo.png)
 │   ├── package.json
+│   ├── tailwind.config.js
+│   ├── postcss.config.js
 │   └── next.config.js
 │
 └── backend/                         # FastAPI (Python)
     ├── app/
     │   ├── main.py                   # FastAPI app, CORS, routes
-    │   ├── config.py                 # env: ANTHROPIC_API_KEY, limits
-    │   ├── schemas.py                # Pydantic: ImageResult, Finding, Profile
+    │   ├── config.py                 # env: ANTHROPIC_API_KEY, model, limits
+    │   ├── schemas.py                # Pydantic: ImageResult, FieldResult, Finding, Profile
     │   ├── pipeline.py               # orchestrates per-image steps (the loop)
     │   ├── services/
     │   │   ├── image.py              # decode, orient, resize, grayscale
     │   │   ├── ocr.py                # Tesseract wrapper -> text + confidence
-    │   │   └── extract.py            # Claude structured extraction
+    │   │   └── extract.py            # Claude structured extraction (forced tool)
     │   └── rules/
-    │       ├── engine.py             # runs all rules, computes verdict
-    │       └── checks.py             # individual rule functions
+    │       └── validate.py           # unified engine: verdict + per-field results + warnings
     ├── tests/
-    │   ├── test_rules.py             # deterministic — high value, fast
-    │   └── fixtures/                 # sample OCR text + expected findings
+    │   ├── test_rules.py             # verdict roll-up + soft warnings
+    │   └── test_validate.py          # per-field validation
+    ├── Dockerfile                    # installs tesseract-ocr; binds $PORT
     ├── requirements.txt
+    ├── pytest.ini
     └── .env.example
 ```
 
 ## 5. Key Endpoints
 
-### `POST /verify`  — primary
-Batch verify. `multipart/form-data`.
+### `POST /upload-label` — single image
+`multipart/form-data` with one `file`. Returns a single `ImageResult` (the same
+object shape as one entry in `/verify`'s `results`).
+
+### `POST /verify` — batch
+`multipart/form-data`.
 
 | field     | type             | notes                                     |
 |-----------|------------------|-------------------------------------------|
-| `files`   | file[] (1..N)    | JPEG/PNG; server caps count & size        |
+| `files`   | file[] (1..N)    | JPEG/PNG/WebP; server caps count & size   |
 | `profile` | JSON string opt. | expected `{brand_name, abv_percent, net_contents, region}` |
 
 Response `200`:
 ```json
 {
-  "summary": { "total": 2, "pass": 1, "warn": 0, "fail": 1 },
+  "summary": { "total": 1, "passed": 0, "warned": 0, "failed": 1 },
   "results": [
     {
       "filename": "label1.jpg",
       "verdict": "FAIL",
       "fields": {
-        "brand_name":  { "value": "Old Mill IPA", "confidence": 0.93 },
-        "abv_percent": { "value": 6.5, "confidence": 0.88 },
-        "net_contents":{ "value": null, "confidence": 0.0 },
-        "government_warning_present": { "value": false, "confidence": 0.9 }
+        "brand_name": "Old Mill IPA",
+        "class_type": "IPA",
+        "abv": 6.5,
+        "net_contents": null,
+        "producer": "Old Mill Brewing Co.",
+        "government_warning": true
       },
-      "findings": [
-        { "code": "MISSING_GOV_WARNING", "severity": "error",
-          "message": "Government health warning text not detected." },
-        { "code": "MISSING_NET_CONTENTS", "severity": "error",
-          "message": "Net contents / volume not found on label." }
-      ],
-      "timings_ms": { "ocr": 740, "claude": 1820, "rules": 3 }
+      "ocr_text": "OLD MILL IPA ... ALC 6.5% BY VOL ...",
+      "ocr_confidence": 88.0,
+      "field_validation": {
+        "government_warning": { "passed": true, "reason": null },
+        "abv": { "passed": true, "reason": null },
+        "brand_name": { "passed": true, "reason": null },
+        "class_type": { "passed": true, "reason": null },
+        "net_contents": { "passed": false, "reason": "Net contents is missing." },
+        "producer": { "passed": true, "reason": null }
+      },
+      "findings": [],
+      "timings": { "ocr_ms": 740, "claude_ms": 1320, "rules_ms": 2, "total_ms": 2100 },
+      "error": null
     }
   ]
 }
@@ -161,20 +189,23 @@ Lets the frontend render a legend and makes the validation layer self-documentin
 
 ## 6. The Two AI / Logic Boundaries
 
-**Claude extraction (`services/extract.py`)** — `claude-sonnet-4-6` (fast + cheap
-enough for ≤5s, strong structured output). Use **tool/structured output** so the
-response is schema-validated JSON, not free text. System prompt: "You extract
-fields from OCR'd alcohol label text. Return only the schema. If a field is not
-present, set value=null and confidence=0. Do not infer regulatory compliance."
+**Claude extraction (`services/extract.py`)** — `claude-haiku-4-5` by default
+(fastest tier, for the ≤5s budget; `claude-sonnet-4-6` / `claude-opus-4-8`
+configurable via `EXTRACTION_MODEL`). A **forced tool call** (`tool_choice`) whose
+input schema is the six fields yields schema-validated JSON in a single call.
+System prompt: "You extract fields from OCR'd alcohol label text. Set a field to
+null when absent. Do not infer values or judge regulatory compliance."
 
-**Rule engine (`rules/`)** — pure Python, deterministic, unit-tested. Example rules:
-- `MISSING_GOV_WARNING` (error) — government warning absent.
-- `ABV_MISSING` / `ABV_OUT_OF_RANGE` (error/warn) — ABV absent or implausible (e.g. >0% & <100%; or mismatch vs `profile.abv_percent`).
-- `MISSING_NET_CONTENTS` (error) — no volume statement.
-- `BRAND_MISMATCH` (warn) — extracted brand ≠ `profile.brand_name`.
-- `LOW_OCR_CONFIDENCE` (warn) — OCR mean confidence below threshold → suggests re-photo.
+**Rule engine (`rules/validate.py`)** — pure Python, deterministic, unit-tested.
+A single `validate_label()` returns the verdict, a per-field `{passed, reason}`
+map, and soft warnings:
+- Hard field rules (a failure → `FAIL`): `GOVERNMENT_WARNING` (literal
+  "GOVERNMENT WARNING:" present in OCR text), `ABV` (numeric and 0–100),
+  `REQUIRED_FIELD` (brand, class/type, net contents, producer present).
+- Soft warnings (→ `WARN`): `LOW_OCR_CONFIDENCE`, `BRAND_MISMATCH`,
+  `ABV_MISMATCH` (the last two only when a `profile` is supplied).
 
-Verdict roll-up: any `error` → `FAIL`; else any `warn` → `WARN`; else `PASS`.
+Verdict roll-up: any failed field → `FAIL`; else any warning → `WARN`; else `PASS`.
 
 ## 7. Trade-offs & Notes (MVP-honest)
 
@@ -185,15 +216,16 @@ Verdict roll-up: any `error` → `FAIL`; else any `warn` → `WARN`; else `PASS`
   code shape, no queue/DB.)
 - **No DB/auth** → results live only in the response; nothing persisted. Acceptable
   for MVP demo.
-- **OCR fallback.** If Tesseract confidence is very low, optionally send the
-  (resized) image directly to Claude vision instead of OCR text. Costs more
-  latency/tokens, so it's gated behind a confidence threshold, off by default.
-- **Latency guard.** Set an Anthropic client timeout (~4s) and `max_tokens` low
-  (a few hundred — output is a small JSON object) to protect the 5s budget;
-  on timeout return the OCR fields with a `EXTRACTION_TIMEOUT` warn finding
-  rather than failing the whole image.
-- **Limits/validation.** Enforce max file size, max file count, and allowed MIME
-  types in FastAPI before doing any work.
+- **OCR fallback (future, not implemented).** If Tesseract confidence is very
+  low, a future version could send the resized image directly to Claude vision
+  instead of OCR text. Currently a low-confidence read is surfaced as a
+  `LOW_OCR_CONFIDENCE` warning instead.
+- **Latency guard (implemented).** An Anthropic client timeout (~4s,
+  `EXTRACTION_TIMEOUT_S`) plus a low `max_tokens` protect the 5s budget; on
+  timeout the image degrades to OCR-only with an `EXTRACTION_TIMEOUT` warning
+  rather than failing. Extraction errors never 500 — they become a result.
+- **Limits/validation (implemented).** FastAPI enforces max file count, max file
+  size, allowed content types, and rejects empty files before any work.
 
 ## 8. Minimal Dependencies
 
