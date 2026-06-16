@@ -138,3 +138,13 @@ Extraction defaults to `claude-haiku-4-5` to keep per-image latency under the
 - **Extensible rules architecture** — rules live in one engine
   (`backend/app/rules/validate.py`); adding a check is a localized change plus a
   catalog entry, with unit tests alongside.
+  
+## Development Process
+
+Generative AI tools were used during development to accelerate implementation,
+scaffold components, and iterate on architecture decisions. All system design,
+validation logic, requirements mapping, testing, and final technical decisions
+were reviewed and implemented as part of the development process.
+
+The compliance determination logic remains fully deterministic and is not
+generated at runtime by an LLM.
