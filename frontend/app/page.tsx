@@ -67,7 +67,7 @@ export default function Home() {
           }}
         />
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-3xl font-bold tracking-tight text-blue-600 dark:text-sky-400">
             AI Alcohol Label Verifier
           </h1>
           <p className="mt-2 text-slate-500">
