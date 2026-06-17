@@ -107,8 +107,8 @@ async def verify(
     if profile:
         try:
             parsed_profile = Profile.model_validate(json.loads(profile))
-        except (json.JSONDecodeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=f"Invalid profile: {exc}")
+        except (json.JSONDecodeError, ValueError):
+            raise HTTPException(status_code=400, detail="Invalid profile JSON.")
 
     results = []
     for upload in files:

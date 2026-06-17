@@ -5,6 +5,7 @@ captured into the ImageResult so a single bad image doesn't sink the batch.
 """
 from __future__ import annotations
 
+import logging
 import time
 from typing import Optional
 
@@ -14,6 +15,8 @@ from app.schemas import Finding, ImageResult, LabelExtraction, Profile, Timings
 from app.services.extract import ExtractionError, ExtractionTimeout, extract_fields
 from app.services.image import load_and_normalize
 from app.services.ocr import run_ocr
+
+logger = logging.getLogger(__name__)
 
 
 def _ms_since(start: float) -> int:
@@ -30,7 +33,8 @@ def process_image(
     # 1. Decode & normalize.
     try:
         img = load_and_normalize(raw, settings.max_image_edge)
-    except Exception as exc:  # noqa: BLE001 - surface any decode failure as a result
+    except Exception:  # noqa: BLE001 - surface any decode failure as a result
+        logger.exception("Image decode failed for %s", filename)
         timings.total_ms = _ms_since(overall_start)
         return ImageResult(
             filename=filename,
@@ -40,11 +44,11 @@ def process_image(
                 Finding(
                     code="DECODE_FAILED",
                     severity="error",
-                    message=f"Could not read image: {exc}",
+                    message="Could not read the image file.",
                 )
             ],
             timings=timings,
-            error=str(exc),
+            error="decode_failed",
         )
 
     # 2. OCR.
@@ -69,26 +73,28 @@ def process_image(
             )
         )
         error = "extraction_timeout"
-    except ExtractionError as exc:
+    except ExtractionError:
+        logger.exception("Field extraction failed for %s", filename)
         extraction = LabelExtraction()
         extra_findings.append(
             Finding(
                 code="EXTRACTION_FAILED",
                 severity="error",
-                message=f"Field extraction failed: {exc}",
+                message="Field extraction failed.",
             )
         )
-        error = str(exc)
-    except Exception as exc:  # noqa: BLE001 - never let extraction 500 the request
+        error = "extraction_failed"
+    except Exception:  # noqa: BLE001 - never let extraction 500 the request
+        logger.exception("Unexpected extraction error for %s", filename)
         extraction = LabelExtraction()
         extra_findings.append(
             Finding(
                 code="EXTRACTION_FAILED",
                 severity="error",
-                message=f"Field extraction failed: {exc}",
+                message="Field extraction failed.",
             )
         )
-        error = str(exc)
+        error = "extraction_failed"
     timings.claude_ms = _ms_since(claude_start)
 
     # 4. Deterministic rules — single engine returns verdict + per-field
