@@ -33,3 +33,23 @@ def load_and_normalize(raw: bytes, max_edge: int) -> Image.Image:
         img = img.resize(new_size, Image.LANCZOS)
 
     return img
+
+
+def normalize_for_vision(raw: bytes, max_edge: int) -> bytes:
+    """Decode, orient, and downscale to bounded JPEG bytes for Claude vision.
+
+    Keeps color (vision benefits from it) but caps the long edge to bound token
+    cost/latency. Returns re-encoded JPEG bytes.
+    """
+    img = Image.open(io.BytesIO(raw))
+    img = ImageOps.exif_transpose(img)
+    img = img.convert("RGB")
+
+    long_edge = max(img.size)
+    if long_edge > max_edge:
+        scale = max_edge / long_edge
+        img = img.resize((round(img.width * scale), round(img.height * scale)), Image.LANCZOS)
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    return buf.getvalue()

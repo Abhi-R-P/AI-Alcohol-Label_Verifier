@@ -8,6 +8,7 @@ per-image latency budget. Single call, no multi-step reasoning.
 """
 from __future__ import annotations
 
+import base64
 from functools import lru_cache
 
 import anthropic
@@ -15,14 +16,8 @@ import anthropic
 from app.config import get_settings
 from app.schemas import LabelExtraction
 
-SYSTEM_PROMPT = """\
-You extract structured fields from OCR'd text taken from a single alcohol \
-product label (a TTB COLA label).
-
-The OCR text is often noisy: misread characters (0/O, 1/l, 5/S), broken or \
-merged words, stray symbols, wrong casing, and out-of-order fragments. Read \
-through that noise to recover the intended values.
-
+# Shared field instructions used by both the OCR-text and vision prompts.
+_FIELD_INSTRUCTIONS = """\
 Call the `record_label_fields` tool with these fields:
 - brand_name: the brand / fanciful name.
 - class_type: the class/type designation (e.g. "IPA", "Cabernet Sauvignon", "Vodka").
@@ -38,9 +33,23 @@ only what actually appears; null if no government warning is present.
 
 Rules:
 - If a field is not present or cannot be reasonably recovered, set it to null.
-- Do NOT invent, translate, infer, or "fix" values not supported by the text.
+- Do NOT invent, translate, infer, or "fix" values not supported by the source.
 - Do NOT judge regulatory compliance — only report what the label says.
 """
+
+SYSTEM_PROMPT = (
+    "You extract structured fields from OCR'd text taken from a single alcohol "
+    "product label (a TTB COLA label).\n\n"
+    "The OCR text is often noisy: misread characters (0/O, 1/l, 5/S), broken or "
+    "merged words, stray symbols, wrong casing, and out-of-order fragments. Read "
+    "through that noise to recover the intended values.\n\n" + _FIELD_INSTRUCTIONS
+)
+
+SYSTEM_PROMPT_VISION = (
+    "You extract structured fields directly from a photo of a single alcohol "
+    "product label (a TTB COLA label). Read all text on the label, including "
+    "small print and the government warning.\n\n" + _FIELD_INSTRUCTIONS
+)
 
 EXTRACTION_TOOL = {
     "name": "record_label_fields",
@@ -87,28 +96,19 @@ def _client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
 
-def extract_fields(ocr_text: str) -> LabelExtraction:
-    """Extract label fields from OCR text. Returns a validated LabelExtraction.
-
-    Raises ExtractionTimeout on timeout, ExtractionError otherwise.
-    """
+def _run_extraction(system: str, content) -> LabelExtraction:
+    """Shared forced-tool call: returns a validated LabelExtraction."""
     settings = get_settings()
-
-    if not ocr_text.strip():
-        return LabelExtraction()
-
     try:
         response = _client().with_options(
             timeout=settings.extraction_timeout_s, max_retries=0
         ).messages.create(
             model=settings.extraction_model,
             max_tokens=1024,
-            system=SYSTEM_PROMPT,
+            system=system,
             tools=[EXTRACTION_TOOL],
             tool_choice={"type": "tool", "name": "record_label_fields"},
-            messages=[
-                {"role": "user", "content": f"OCR text from the label:\n\n{ocr_text}"}
-            ],
+            messages=[{"role": "user", "content": content}],
         )
     except anthropic.APITimeoutError as exc:
         raise ExtractionTimeout(str(exc)) from exc
@@ -121,3 +121,31 @@ def extract_fields(ocr_text: str) -> LabelExtraction:
             f"Model did not return the extraction tool (stop_reason={response.stop_reason})."
         )
     return LabelExtraction.model_validate(tool_use.input)
+
+
+def extract_fields(ocr_text: str) -> LabelExtraction:
+    """Extract label fields from OCR text (OCR mode). One Claude call.
+
+    Raises ExtractionTimeout on timeout, ExtractionError otherwise.
+    """
+    if not ocr_text.strip():
+        return LabelExtraction()
+    return _run_extraction(
+        SYSTEM_PROMPT, f"OCR text from the label:\n\n{ocr_text}"
+    )
+
+
+def extract_fields_vision(image_bytes: bytes, media_type: str = "image/jpeg") -> LabelExtraction:
+    """Extract label fields directly from the label image (vision mode).
+
+    Sends the image to a multimodal Claude model — no OCR step. One Claude call.
+    """
+    b64 = base64.standard_b64encode(image_bytes).decode("ascii")
+    content = [
+        {
+            "type": "image",
+            "source": {"type": "base64", "media_type": media_type, "data": b64},
+        },
+        {"type": "text", "text": "Extract the fields from this alcohol label image."},
+    ]
+    return _run_extraction(SYSTEM_PROMPT_VISION, content)

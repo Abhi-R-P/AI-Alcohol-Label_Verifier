@@ -1,0 +1,7 @@
+filename,brand_name,class_type,abv,net_contents,bottler_name,bottler_address,country_of_origin,has_warning
+old_mill_ipa.png,Old Mill IPA,India Pale Ale,6.5,355 mL,Old Mill Brewing Co.,"Portland, OR",USA,yes
+valle_verde.png,Valle Verde,Cabernet Sauvignon,13.5,750 mL,Imported by Vino Imports,"New York, NY",Italy,yes
+north_star_vodka.png,North Star Vodka,Vodka,40.0,1 L,North Star Distillery,"Austin, TX",USA,yes
+harbor_light.png,Harbor Light Lager,Lager,4.8,,Harbor Brewing Co.,"Seattle, WA",USA,yes
+sunset_cider.png,Sunset Cider,Hard Cider,5.5,500 mL,Sunset Orchards,"Sonoma, CA",USA,no
+golden_wheat.png,Golden Wheat Ale,Wheat Ale,5.2,12 FL OZ,Golden Fields Brewing,"Boulder, CO",USA,yes

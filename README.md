@@ -116,11 +116,32 @@ cp .env.local.example .env.local   # NEXT_PUBLIC_API_BASE defaults to http://loc
 npm run dev                        # http://localhost:3000
 ```
 
-## Model
+## Model & extraction mode
 
 Extraction defaults to `claude-haiku-4-5` to keep per-image latency under the
 ~5s target. For higher accuracy at the cost of latency, set
 `EXTRACTION_MODEL=claude-sonnet-4-6` (or `claude-opus-4-8`) in `backend/.env`.
+
+Two extraction strategies are supported via `EXTRACTION_MODE`:
+- `ocr` (default) — Tesseract lifts text, Claude structures it. Small input, fast, cheap.
+- `vision` — the image is sent directly to Claude's vision model (no OCR). Often
+  more robust on stylized/curved labels, at higher token cost.
+
+See [`backend/eval/`](./backend/eval/README.md) for a harness that measures
+field-level accuracy and latency and **compares the two modes** head-to-head.
+
+## Evaluation
+
+`backend/eval/` contains a reproducible harness: a small ground-truth dataset,
+a synthetic sample generator, and a runner that reports per-field accuracy and
+median latency for OCR vs. vision extraction. Run from `backend/`:
+
+```bash
+python eval/generate_samples.py    # render labeled samples
+python eval/run_eval.py            # OCR vs vision -> results/latest.md
+```
+
+The scoring logic is pure and unit-tested (`tests/test_eval_scoring.py`).
 
 ## Assumptions & Tradeoffs
 

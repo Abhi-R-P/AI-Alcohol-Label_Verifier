@@ -127,9 +127,9 @@ ai-alcohol-label-verifier/
     │   │   └── extract.py            # Claude structured extraction (forced tool)
     │   └── rules/
     │       └── validate.py           # unified engine: verdict + per-field results + warnings
-    ├── tests/
-    │   ├── test_rules.py             # verdict roll-up + soft warnings
-    │   └── test_validate.py          # per-field validation
+    ├── tests/                        # rule/validation + eval-scoring unit tests
+    ├── eval/                         # accuracy harness: OCR vs vision
+    │   ├── ground_truth.csv · generate_samples.py · run_eval.py · scoring.py
     ├── Dockerfile                    # installs tesseract-ocr; binds $PORT
     ├── requirements.txt
     ├── pytest.ini
@@ -223,10 +223,12 @@ Verdict roll-up: any field `fail` → FAIL; else any `warn` → WARN; else PASS.
   middle ground between a naive sequential loop and a full async job queue.
 - **No DB/auth** → results live only in the response; nothing persisted. Acceptable
   for MVP demo.
-- **OCR fallback (future, not implemented).** If Tesseract confidence is very
-  low, a future version could send the resized image directly to Claude vision
-  instead of OCR text. Currently a low-confidence read is surfaced as a
-  `LOW_OCR_CONFIDENCE` warning instead.
+- **OCR vs. vision (both implemented).** `EXTRACTION_MODE=ocr` (default) sends
+  OCR text to Claude; `EXTRACTION_MODE=vision` sends the image directly to a
+  multimodal model — the natural path for stylized/curved labels, at higher token
+  cost. `backend/eval/` measures accuracy + latency for both so the default is
+  evidence-based. (Auto-switching to vision on low OCR confidence is a possible
+  future refinement; today low confidence surfaces a `LOW_OCR_CONFIDENCE` warning.)
 - **Latency guard (implemented).** An Anthropic client timeout (~4s,
   `EXTRACTION_TIMEOUT_S`) plus a low `max_tokens` protect the 5s budget; on
   timeout the image degrades to OCR-only with an `EXTRACTION_TIMEOUT` warning
