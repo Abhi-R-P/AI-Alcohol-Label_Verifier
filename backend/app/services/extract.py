@@ -33,6 +33,8 @@ only what actually appears; null if no government warning is present.
 
 Rules:
 - If a field is not present or cannot be reasonably recovered, set it to null.
+  NEVER output placeholder text such as "unknown", "<UNKNOWN>", "N/A", or
+  "not visible" — use null.
 - Do NOT invent, translate, infer, or "fix" values not supported by the source.
 - Do NOT judge regulatory compliance — only report what the label says.
 """

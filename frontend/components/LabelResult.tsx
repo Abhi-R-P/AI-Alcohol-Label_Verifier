@@ -89,7 +89,9 @@ export default function LabelResult({
                     {r.extracted ?? "—"}
                   </span>
                 </div>
-                {r.expected && (
+                {/* Show the expected value from the application, but not the long
+                    mandated government-warning statement (noise). */}
+                {r.expected && key !== "government_warning" && (
                   <p className="text-xs text-slate-400">Application: {r.expected}</p>
                 )}
                 {r.status !== "pass" && r.reason && (

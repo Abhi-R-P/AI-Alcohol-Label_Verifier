@@ -3,11 +3,31 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 Severity = Literal["error", "warn", "info"]
 Verdict = Literal["PASS", "WARN", "FAIL"]
 FieldStatus = Literal["pass", "warn", "fail"]
+
+# Placeholder strings a model may emit instead of null for an unreadable field.
+# These must NOT be treated as real extracted values.
+_SENTINEL_VALUES = {
+    "", "unknown", "n/a", "na", "none", "null", "nil", "not visible",
+    "not present", "not shown", "not stated", "not specified", "not found",
+    "not legible", "illegible", "not applicable", "not available", "unspecified",
+    "no value", "missing", "-", "--", "–", "—",
+}
+
+
+def _clean_field(value: object) -> Optional[str]:
+    """Map placeholder/sentinel strings to None; trim real values."""
+    if not isinstance(value, str):
+        return value
+    stripped = value.strip()
+    key = stripped.lower().strip("<>[](){} ").rstrip(".").strip()
+    if key in _SENTINEL_VALUES:
+        return None
+    return stripped or None
 
 
 class LabelExtraction(BaseModel):
@@ -44,6 +64,22 @@ class LabelExtraction(BaseModel):
             "Null if no government warning appears."
         ),
     )
+
+    @field_validator(
+        "brand_name",
+        "class_type",
+        "net_contents",
+        "bottler_name",
+        "bottler_address",
+        "country_of_origin",
+        "government_warning_text",
+        mode="before",
+    )
+    @classmethod
+    def _null_placeholders(cls, v: object) -> Optional[str]:
+        # A field the model couldn't read must be None, not "<UNKNOWN>"/"N/A" —
+        # otherwise a placeholder would pass the presence check.
+        return _clean_field(v)
 
 
 class ApplicationData(BaseModel):
