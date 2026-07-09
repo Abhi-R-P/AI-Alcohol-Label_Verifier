@@ -18,17 +18,12 @@ is committed. Drop the five images into this folder before running.
 
 ## Run
 
-From `backend/` (needs `ANTHROPIC_API_KEY`; OCR mode also needs Tesseract):
-
-```bash
-python eval/run_eval.py --samples-dir real/real --truth real/ground_truth.csv
-# (or --mode vision / --mode ocr)
-```
-
-Wait — the image dir and the CSV both live in `eval/real/`, so:
+From `backend/` (needs `ANTHROPIC_API_KEY`; OCR mode also needs Tesseract).
+The images and the CSV both live in `eval/real/`:
 
 ```bash
 python eval/run_eval.py --samples-dir real --truth real/ground_truth.csv
+# add --mode vision  or  --mode ocr  to run just one
 ```
 
 Output: per-field accuracy + median latency for OCR vs. vision, written to
