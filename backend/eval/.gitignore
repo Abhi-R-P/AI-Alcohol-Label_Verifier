@@ -1,2 +1,7 @@
 samples/
 results/
+# real-photo assets are external; keep the ground truth + README, ignore images
+real/*.jpg
+real/*.jpeg
+real/*.png
+real/*.webp

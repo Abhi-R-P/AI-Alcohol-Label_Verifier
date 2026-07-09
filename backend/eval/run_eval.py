@@ -28,9 +28,9 @@ RESULTS = HERE / "results"
 MAX_EDGE = 1280
 
 
-def load_ground_truth() -> dict[str, dict]:
+def load_ground_truth(path: Path) -> dict[str, dict]:
     out: dict[str, dict] = {}
-    with open(HERE / "ground_truth.csv", newline="", encoding="utf-8") as f:
+    with open(path, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             out[row["filename"]] = {
                 "brand_name": row.get("brand_name") or None,
@@ -60,12 +60,12 @@ def extract_one(mode: str, raw: bytes) -> tuple[dict, float]:
     return extraction.model_dump(), time.perf_counter() - start
 
 
-def run_mode(mode: str, truth: dict[str, dict]) -> dict:
+def run_mode(mode: str, truth: dict[str, dict], samples_dir: Path) -> dict:
     per_field_hits = {f: 0 for f in SCORED_FIELDS}
     latencies: list[float] = []
     n = 0
     for filename, expected in truth.items():
-        path = SAMPLES / filename
+        path = samples_dir / filename
         if not path.exists():
             print(f"  (skip {filename}: not generated)")
             continue
@@ -96,15 +96,18 @@ def _md_table(mode: str, res: dict) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["ocr", "vision", "both"], default="both")
+    parser.add_argument("--samples-dir", default="samples", help="dir of images, relative to eval/")
+    parser.add_argument("--truth", default="ground_truth.csv", help="ground-truth CSV, relative to eval/")
     args = parser.parse_args()
     modes = ["ocr", "vision"] if args.mode == "both" else [args.mode]
 
-    truth = load_ground_truth()
-    report = [f"# Extraction eval — {len(truth)} labels\n"]
+    samples_dir = HERE / args.samples_dir
+    truth = load_ground_truth(HERE / args.truth)
+    report = [f"# Extraction eval — {len(truth)} labels ({args.samples_dir})\n"]
     summary_rows = []
     for mode in modes:
         print(f"\n== {mode} ==")
-        res = run_mode(mode, truth)
+        res = run_mode(mode, truth, samples_dir)
         report.append(_md_table(mode, res))
         n = res["n"] or 1
         overall = sum(res["per_field_hits"].values()) / (n * len(SCORED_FIELDS))
