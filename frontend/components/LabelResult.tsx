@@ -1,14 +1,33 @@
-import type { ImageResult, LabelExtraction } from "../lib/types";
+import type { FieldStatus, ImageResult, Verdict } from "../lib/types";
 
-// Plain-language labels + how to render each extracted value, in reading order.
-const FIELDS: { key: string; label: string; value: (f: LabelExtraction) => string }[] = [
-  { key: "government_warning", label: "Government warning", value: (f) => (f.government_warning ? "Present" : "Not found") },
-  { key: "abv", label: "Alcohol by volume (ABV)", value: (f) => (f.abv == null ? "—" : `${f.abv}%`) },
-  { key: "brand_name", label: "Brand name", value: (f) => f.brand_name ?? "—" },
-  { key: "class_type", label: "Class / type", value: (f) => f.class_type ?? "—" },
-  { key: "net_contents", label: "Net contents", value: (f) => f.net_contents ?? "—" },
-  { key: "producer", label: "Producer", value: (f) => f.producer ?? "—" },
-];
+const FIELD_LABELS: Record<string, string> = {
+  government_warning: "Government warning",
+  brand_name: "Brand name",
+  class_type: "Class / type",
+  abv: "Alcohol by volume (ABV)",
+  net_contents: "Net contents",
+  bottler_name: "Bottler name",
+  bottler_address: "Bottler address",
+  country_of_origin: "Country of origin",
+};
+const FIELD_ORDER = Object.keys(FIELD_LABELS);
+
+const STATUS_ICON: Record<FieldStatus, string> = { pass: "✓", warn: "!", fail: "✗" };
+const STATUS_DOT: Record<FieldStatus, string> = {
+  pass: "bg-green-600",
+  warn: "bg-amber-500",
+  fail: "bg-red-600",
+};
+const VERDICT_BANNER: Record<Verdict, string> = {
+  PASS: "bg-green-50 text-green-800",
+  WARN: "bg-amber-50 text-amber-800",
+  FAIL: "bg-red-50 text-red-800",
+};
+const VERDICT_PILL: Record<Verdict, string> = {
+  PASS: "bg-green-600",
+  WARN: "bg-amber-500",
+  FAIL: "bg-red-600",
+};
 
 export default function LabelResult({
   result,
@@ -18,78 +37,84 @@ export default function LabelResult({
   thumbnail?: string;
 }) {
   const checks = result.field_validation;
-  const rows = FIELDS.filter((f) => f.key in checks);
-  const failedCount = rows.filter(({ key }) => !checks[key].passed).length;
-  const overallPass = rows.length > 0 && failedCount === 0;
+  const rows = [
+    ...FIELD_ORDER.filter((k) => k in checks),
+    ...Object.keys(checks).filter((k) => !FIELD_ORDER.includes(k)),
+  ];
+  const counts = { pass: 0, warn: 0, fail: 0 } as Record<FieldStatus, number>;
+  for (const k of rows) counts[checks[k].status]++;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       {/* Overall status banner. */}
-      <div className={`flex items-center gap-3 px-5 py-4 ${overallPass ? "bg-green-50" : "bg-red-50"}`}>
+      <div className={`flex items-center gap-3 px-5 py-4 ${VERDICT_BANNER[result.verdict]}`}>
         {thumbnail && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={thumbnail}
-            alt=""
-            className="h-12 w-12 flex-none rounded-lg object-cover ring-1 ring-black/5"
-          />
+          <img src={thumbnail} alt="" className="h-12 w-12 flex-none rounded-lg object-cover ring-1 ring-black/5" />
         )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-slate-500">{result.filename}</p>
-          <p className={`text-lg font-bold ${overallPass ? "text-green-700" : "text-red-700"}`}>
-            {overallPass
-              ? "PASS — all checks passed"
-              : `FAIL — ${failedCount} issue${failedCount === 1 ? "" : "s"} found`}
+          <p className="text-lg font-bold">
+            {result.verdict === "PASS" && "PASS — all checks passed"}
+            {result.verdict === "WARN" && `WARN — ${counts.warn} to review`}
+            {result.verdict === "FAIL" && `FAIL — ${counts.fail} issue${counts.fail === 1 ? "" : "s"}`}
           </p>
         </div>
         <span
           aria-hidden
-          className={`flex-none rounded-full px-3 py-1 text-sm font-extrabold ${
-            overallPass ? "bg-green-600 text-white" : "bg-red-600 text-white"
-          }`}
+          className={`flex-none rounded-full px-3 py-1 text-sm font-extrabold text-white ${VERDICT_PILL[result.verdict]}`}
         >
-          {overallPass ? "PASS" : "FAIL"}
+          {result.verdict}
         </span>
       </div>
 
-      {/* Field-by-field checklist with the value Claude extracted. */}
+      {/* Field-by-field checklist. */}
       <ul className="divide-y divide-slate-100">
-        {rows.map(({ key, label, value }) => {
-          const { passed, reason } = checks[key];
+        {rows.map((key) => {
+          const r = checks[key];
           return (
             <li key={key} className="flex items-start gap-3 px-5 py-3">
               <span
                 aria-hidden
-                className={`mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full text-xs font-bold text-white ${
-                  passed ? "bg-green-600" : "bg-red-600"
-                }`}
+                className={`mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-full text-xs font-bold text-white ${STATUS_DOT[r.status]}`}
               >
-                {passed ? "✓" : "✗"}
+                {STATUS_ICON[r.status]}
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-3">
-                  <span className="font-medium text-slate-800">{label}</span>
-                  <span className="truncate text-sm text-slate-500" title={value(result.fields)}>
-                    {value(result.fields)}
+                  <span className="font-medium text-slate-800">
+                    {FIELD_LABELS[key] ?? key}
+                  </span>
+                  <span className="truncate text-sm text-slate-500" title={r.extracted ?? ""}>
+                    {r.extracted ?? "—"}
                   </span>
                 </div>
-                {!passed && reason && <p className="text-sm text-red-700">{reason}</p>}
+                {r.expected && (
+                  <p className="text-xs text-slate-400">Application: {r.expected}</p>
+                )}
+                {r.status !== "pass" && r.reason && (
+                  <p className={`text-sm ${r.status === "fail" ? "text-red-700" : "text-amber-700"}`}>
+                    {r.reason}
+                  </p>
+                )}
               </div>
             </li>
           );
         })}
       </ul>
 
-      {/* Soft warnings / notes (low OCR confidence, profile mismatches, etc.). */}
+      {/* Soft notes + processing time. */}
       {result.findings.length > 0 && (
-        <div className="border-t border-slate-100 bg-amber-50/60 px-5 py-3">
+        <div className="border-t border-slate-100 bg-amber-50/60 px-5 py-2">
           {result.findings.map((f, i) => (
-            <p key={i} className="text-sm text-amber-800">
-              {f.message}
-            </p>
+            <p key={i} className="text-sm text-amber-800">{f.message}</p>
           ))}
         </div>
       )}
+      <div className="border-t border-slate-100 px-5 py-2 text-xs text-slate-400">
+        Processed in {(result.timings.total_ms / 1000).toFixed(1)}s · OCR confidence{" "}
+        {result.ocr_confidence.toFixed(0)}
+      </div>
     </div>
   );
 }

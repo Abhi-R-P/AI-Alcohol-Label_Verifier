@@ -6,8 +6,8 @@
 ## 1. Overview
 
 A user uploads one or more photos of an alcohol product label. For each image the
-system runs OCR to lift raw text, sends that text (plus a target product profile)
-to the Claude API for **structured field extraction**, and then runs a
+system runs OCR to lift raw text, sends that text to the Claude API for
+**structured field extraction**, and then runs a
 **deterministic rule-based validation layer** that flags compliance issues
 (missing government warning, ABV out of range, net contents missing, etc.).
 
@@ -60,22 +60,24 @@ The frontend shows a per-image verdict: `PASS`, `WARN`, or `FAIL` with itemized 
 1. User selects one or more images in the Next.js page (drag-and-drop or browse)
    and submits.
 2. Frontend posts `multipart/form-data`: a single image → `POST /upload-label`;
-   multiple → `POST /verify` (with an optional `profile` field carrying expected
-   brand / ABV / net-contents to validate against). Both run the same per-image
-   pipeline below.
-3. Backend processes each `UploadFile` (a simple sequential loop for `/verify`):
+   multiple → `POST /verify`. Both accept optional expected COLA values — an
+   `application` JSON (applied to all) or, for batch, a `csv_file` mapping
+   `filename` → expected fields.
+3. Backend reads/validates every upload, then processes images **concurrently**
+   through a bounded worker pool (`BATCH_CONCURRENCY`, default 3) — each image:
    1. **Decode & normalize** — open with Pillow, auto-orient, downscale to a max
       edge (~1280px), grayscale. Bounds OCR cost.
    2. **OCR** — Tesseract (`pytesseract`) returns raw text + mean confidence.
-   3. **Extract** — send the OCR text to Claude with a **forced tool call** whose
-      input schema is the six fields, yielding schema-validated JSON. Returns
-      typed values: `brand_name`, `class_type`, `abv`, `net_contents`,
-      `producer`, `government_warning` (null when absent; no per-field confidence).
-      A client timeout bounds latency; on timeout the image degrades to OCR-only
-      with an `EXTRACTION_TIMEOUT` warning rather than failing.
-   4. **Validate** — pass the fields (plus OCR text, OCR confidence, profile)
-      through `rules/validate.py`, which returns a `verdict`, a per-field
-      `{passed, reason}` map (`field_validation`), and soft `warnings`.
+   3. **Extract** — send the OCR text to Claude with a **forced tool call**,
+      yielding schema-validated JSON for the full TTB field set: `brand_name`,
+      `class_type`, `abv`, `net_contents`, `bottler_name`, `bottler_address`,
+      `country_of_origin`, and `government_warning_text` (verbatim). A client
+      timeout bounds latency; on timeout the image degrades to OCR-only with an
+      `EXTRACTION_TIMEOUT` warning rather than failing.
+   4. **Validate** — pass the fields (plus OCR confidence and any expected
+      application data) through `rules/validate.py`, which returns a `verdict`, a
+      per-field `{status, reason, extracted, expected}` map (`field_validation`),
+      and soft `warnings`.
    5. Build `ImageResult{filename, verdict, fields, ocr_text, ocr_confidence,
       field_validation, findings, timings, error}`.
 4. `/upload-label` returns one `ImageResult`; `/verify` returns
@@ -143,10 +145,11 @@ object shape as one entry in `/verify`'s `results`).
 ### `POST /verify` — batch
 `multipart/form-data`.
 
-| field     | type             | notes                                     |
-|-----------|------------------|-------------------------------------------|
-| `files`   | file[] (1..N)    | JPEG/PNG/WebP; server caps count & size   |
-| `profile` | JSON string opt. | expected `{brand_name, abv_percent, net_contents, region}` |
+| field        | type             | notes                                     |
+|--------------|------------------|-------------------------------------------|
+| `files`      | file[] (1..N)    | JPEG/PNG/WebP; server caps count & size   |
+| `application`| JSON string opt. | expected values, applied to all images    |
+| `csv_file`   | file opt.        | per-image expected values, keyed by `filename` |
 
 Response `200`:
 ```json
@@ -161,18 +164,17 @@ Response `200`:
         "class_type": "IPA",
         "abv": 6.5,
         "net_contents": null,
-        "producer": "Old Mill Brewing Co.",
-        "government_warning": true
+        "bottler_name": "Old Mill Brewing Co.",
+        "bottler_address": "Portland, OR",
+        "country_of_origin": "USA",
+        "government_warning_text": "GOVERNMENT WARNING: (1) According to..."
       },
       "ocr_text": "OLD MILL IPA ... ALC 6.5% BY VOL ...",
       "ocr_confidence": 88.0,
       "field_validation": {
-        "government_warning": { "passed": true, "reason": null },
-        "abv": { "passed": true, "reason": null },
-        "brand_name": { "passed": true, "reason": null },
-        "class_type": { "passed": true, "reason": null },
-        "net_contents": { "passed": false, "reason": "Net contents is missing." },
-        "producer": { "passed": true, "reason": null }
+        "government_warning": { "status": "pass", "reason": null, "extracted": "GOVERNMENT WARNING: ...", "expected": "GOVERNMENT WARNING: ..." },
+        "brand_name": { "status": "warn", "reason": "Matches the application except for case/spacing/punctuation.", "extracted": "Old Mill IPA", "expected": "OLD MILL IPA" },
+        "net_contents": { "status": "fail", "reason": "Net contents is missing from the label.", "extracted": null, "expected": null }
       },
       "findings": [],
       "timings": { "ocr_ms": 740, "claude_ms": 1320, "rules_ms": 2, "total_ms": 2100 },
@@ -192,28 +194,33 @@ Lets the frontend render a legend and makes the validation layer self-documentin
 **Claude extraction (`services/extract.py`)** — `claude-haiku-4-5` by default
 (fastest tier, for the ≤5s budget; `claude-sonnet-4-6` / `claude-opus-4-8`
 configurable via `EXTRACTION_MODEL`). A **forced tool call** (`tool_choice`) whose
-input schema is the six fields yields schema-validated JSON in a single call.
-System prompt: "You extract fields from OCR'd alcohol label text. Set a field to
-null when absent. Do not infer values or judge regulatory compliance."
+input schema is the full TTB field set yields schema-validated JSON in a single
+call — including the government-warning statement copied **verbatim** for the
+strict check. Claude only reports what the label says; it never judges compliance.
 
 **Rule engine (`rules/validate.py`)** — pure Python, deterministic, unit-tested.
-A single `validate_label()` returns the verdict, a per-field `{passed, reason}`
-map, and soft warnings:
-- Hard field rules (a failure → `FAIL`): `GOVERNMENT_WARNING` (literal
-  "GOVERNMENT WARNING:" present in OCR text), `ABV` (numeric and 0–100),
-  `REQUIRED_FIELD` (brand, class/type, net contents, producer present).
-- Soft warnings (→ `WARN`): `LOW_OCR_CONFIDENCE`, `BRAND_MISMATCH`,
-  `ABV_MISMATCH` (the last two only when a `profile` is supplied).
+`validate_label()` returns the verdict and a per-field `{status, reason,
+extracted, expected}` map (three-state: pass / warn / fail):
+- **Government warning** — matched word-for-word against the canonical 27 CFR
+  statement: exact → pass; correct wording but case/punctuation differs → warn;
+  substantively different or absent → fail.
+- **ABV** — numeric and 0–100; when the application supplies an expected value,
+  compared within tolerance (≤0.3 pass, ≤1.0 warn, else fail).
+- **Required fields** (brand, class/type, net contents, bottler name/address) —
+  must be present; when expected values are supplied, compared with **fuzzy
+  judgment** (exact → pass, minor formatting/case/apostrophe difference → warn,
+  substantive mismatch → fail). Country of origin is optional.
+- **Soft warnings** (→ warn): `LOW_OCR_CONFIDENCE`.
 
-Verdict roll-up: any failed field → `FAIL`; else any warning → `WARN`; else `PASS`.
+Verdict roll-up: any field `fail` → FAIL; else any `warn` → WARN; else PASS.
 
 ## 7. Trade-offs & Notes (MVP-honest)
 
-- **Batch = synchronous loop.** N images are processed sequentially in one
-  request. Simple and adequate for small batches. Risk: large batches blow the
-  per-request time → cap N (e.g. 10) and surface that in the UI. (Easy follow-up:
-  process the loop with a bounded `asyncio.gather` over the Claude calls — same
-  code shape, no queue/DB.)
+- **Bounded-concurrency batch.** Images are processed via `asyncio.gather` over a
+  bounded worker pool (`BATCH_CONCURRENCY`, default 3; each `process_image` runs
+  in a threadpool since OCR + the Claude client are blocking). Concurrency is
+  capped rather than unbounded to protect memory on small hosts — a deliberate
+  middle ground between a naive sequential loop and a full async job queue.
 - **No DB/auth** → results live only in the response; nothing persisted. Acceptable
   for MVP demo.
 - **OCR fallback (future, not implemented).** If Tesseract confidence is very

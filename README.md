@@ -21,15 +21,22 @@ logic lives in `backend/app/rules/` and is unit-tested.
 ## Features
 
 - **Single and batch image uploads** — verify one label (`POST /upload-label`) or
-  many in a single request (`POST /verify`).
+  many concurrently in a single request (`POST /verify`).
 - **OCR-based label extraction** — Tesseract reads the raw text off each image.
-- **Claude-powered structured extraction** — the OCR text is turned into typed
-  fields (brand, class/type, ABV, net contents, producer, government warning).
-- **Deterministic rule-based validation** — a pure-Python engine checks each
-  field against the compliance rules.
-- **PASS / WARN / FAIL verdicts** — a single roll-up status per image.
-- **Itemized findings** — per-field pass/fail with reasons, plus soft warnings
-  (e.g. low OCR confidence, profile mismatch).
+- **Claude-powered structured extraction** — the OCR text is turned into the full
+  TTB field set: brand, class/type, ABV, net contents, bottler name, bottler
+  address, country of origin, and the government-warning text (verbatim).
+- **Deterministic rule-based validation** — a pure-Python engine checks each field.
+- **Strict government-warning check** — the warning is matched **word-for-word**
+  against the mandated 27 CFR statement (exact → PASS, formatting/case-only
+  difference → WARN, otherwise FAIL).
+- **Label-vs-application comparison** — supply expected COLA values (a form, or a
+  CSV for batch) and each field is compared with **fuzzy judgment**: exact → PASS,
+  minor formatting/apostrophe/case difference → WARN, substantive mismatch → FAIL.
+- **PASS / WARN / FAIL verdicts** — a three-state roll-up, per field and per label.
+- **Itemized findings** — per-field status, reason, and extracted-vs-expected
+  values, plus soft warnings (e.g. low OCR confidence). Processing time is shown
+  per label.
 
 ## Approach
 
@@ -86,8 +93,11 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 Endpoints:
-- `POST /upload-label` — `multipart/form-data`: a single `file`; returns one result.
-- `POST /verify` — `multipart/form-data`: `files` (1..N images) + optional `profile` (JSON).
+- `POST /upload-label` — `multipart/form-data`: a single `file` + optional
+  `application` (JSON of expected values); returns one result.
+- `POST /verify` — `multipart/form-data`: `files` (1..N images) + optional
+  `application` (JSON, applied to all) or `csv_file` (per-image expected values,
+  keyed by a `filename` column). Images are processed concurrently.
 - `GET /rules` — the active rule catalog.
 - `GET /healthz` — checks Tesseract + API key.
 
@@ -114,11 +124,13 @@ Extraction defaults to `claude-haiku-4-5` to keep per-image latency under the
 
 ## Assumptions & Tradeoffs
 
-- **Prototype scope vs. full TTB compliance** — implements a representative
-  subset of checks (government warning phrase, ABV presence/range, required
-  fields), not the complete 27 CFR ruleset. The architecture is built to extend.
-- **Sequential batch processing** — images are processed in a simple loop, not an
-  async queue. Clear and correct for small batches; not tuned for high throughput.
+- **Prototype scope vs. full TTB compliance** — implements the core checks
+  (strict government warning, ABV presence/range/tolerance, required-field
+  presence, and label-vs-application matching), not the complete 27 CFR ruleset
+  (e.g. class-specific ABV tolerances, standards of fill). Built to extend.
+- **Bounded-concurrency batch** — images are processed concurrently via a bounded
+  worker pool (default 3, `BATCH_CONCURRENCY`) rather than an async job queue —
+  fast for interactive batches while capping memory on small hosts.
 - **OCR quality limitations** — accuracy depends on photo quality; low-confidence
   reads are flagged rather than silently trusted, and no advanced image cleanup
   is applied.

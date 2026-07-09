@@ -3,17 +3,28 @@
 import { useEffect, useState } from "react";
 import { uploadLabels } from "../lib/api";
 import LabelResult from "../components/LabelResult";
-import type { ImageResult } from "../lib/types";
+import type { ApplicationData, ImageResult } from "../lib/types";
+
+const APP_FIELDS: { key: keyof ApplicationData; label: string; placeholder: string }[] = [
+  { key: "brand_name", label: "Brand name", placeholder: "Old Mill IPA" },
+  { key: "class_type", label: "Class / type", placeholder: "IPA" },
+  { key: "abv", label: "ABV %", placeholder: "6.5" },
+  { key: "net_contents", label: "Net contents", placeholder: "355 mL" },
+  { key: "bottler_name", label: "Bottler name", placeholder: "Old Mill Brewing Co." },
+  { key: "bottler_address", label: "Bottler address", placeholder: "Portland, OR" },
+  { key: "country_of_origin", label: "Country of origin", placeholder: "USA" },
+];
 
 export default function Home() {
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [form, setForm] = useState<Record<string, string>>({});
   const [results, setResults] = useState<ImageResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
-  // Object URLs for thumbnails; revoke on change to avoid leaks.
   useEffect(() => {
     const urls = files.map((f) => URL.createObjectURL(f));
     setPreviews(urls);
@@ -34,8 +45,25 @@ export default function Home() {
 
   function reset() {
     setFiles([]);
+    setCsvFile(null);
+    setForm({});
     setResults([]);
     setError(null);
+  }
+
+  function buildApplication(): ApplicationData {
+    const app: ApplicationData = {};
+    for (const { key } of APP_FIELDS) {
+      const v = form[key]?.trim();
+      if (!v) continue;
+      if (key === "abv") {
+        const n = Number(v);
+        if (!Number.isNaN(n)) app.abv = n;
+      } else {
+        (app as Record<string, string>)[key] = v;
+      }
+    }
+    return app;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -45,7 +73,7 @@ export default function Home() {
     setError(null);
     setResults([]);
     try {
-      setResults(await uploadLabels(files));
+      setResults(await uploadLabels(files, buildApplication(), csvFile));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -56,7 +84,6 @@ export default function Home() {
   return (
     <main className="mx-auto max-w-3xl px-5 py-12">
       <header className="mb-8 flex items-center gap-4">
-        {/* Logo lives at frontend/public/logo.png. Hidden gracefully if absent. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/logo.png"
@@ -71,14 +98,14 @@ export default function Home() {
             AI Alcohol Label Verifier
           </h1>
           <p className="mt-2 text-slate-500">
-            Upload one or more label images — each is read with OCR, structured by Claude,
-            and checked against the compliance rules.
+            Upload label images — each is read with OCR, structured by Claude, and checked
+            against TTB compliance rules and (optionally) your application data.
           </p>
         </div>
       </header>
 
       <form onSubmit={handleSubmit}>
-        {/* Drag-and-drop / click-to-browse zone. */}
+        {/* Drag-and-drop / browse. */}
         <label
           htmlFor="label-files"
           onDragOver={(e) => {
@@ -96,7 +123,7 @@ export default function Home() {
           }`}
         >
           <span className="text-sm font-medium text-slate-700">
-            Drag &amp; drop images here, or <span className="underline">browse</span>
+            Drag &amp; drop label images here, or <span className="underline">browse</span>
           </span>
           <span className="mt-1 text-xs text-slate-400">PNG, JPEG, or WebP — up to 10 files</span>
           <input
@@ -109,17 +136,13 @@ export default function Home() {
           />
         </label>
 
-        {/* Selected-file thumbnails with remove buttons. */}
+        {/* Thumbnails. */}
         {files.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-3">
             {files.map((file, i) => (
               <div key={i} className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={previews[i]}
-                  alt={file.name}
-                  className="h-20 w-20 rounded-lg object-cover ring-1 ring-slate-200"
-                />
+                <img src={previews[i]} alt={file.name} className="h-20 w-20 rounded-lg object-cover ring-1 ring-slate-200" />
                 <button
                   type="button"
                   onClick={() => removeFile(i)}
@@ -132,6 +155,40 @@ export default function Home() {
             ))}
           </div>
         )}
+
+        {/* Expected application values (optional). */}
+        <details className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+          <summary className="cursor-pointer text-sm font-medium text-slate-700">
+            Expected values from the COLA application (optional)
+          </summary>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {APP_FIELDS.map(({ key, label, placeholder }) => (
+              <label key={key} className="block text-xs font-medium text-slate-500">
+                {label}
+                <input
+                  type={key === "abv" ? "number" : "text"}
+                  step={key === "abv" ? "0.1" : undefined}
+                  value={form[key] ?? ""}
+                  placeholder={placeholder}
+                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                  className="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm text-slate-800"
+                />
+              </label>
+            ))}
+          </div>
+          <div className="mt-4 border-t border-slate-100 pt-3">
+            <label className="block text-xs font-medium text-slate-500">
+              Or upload a CSV of expected values (batch — columns: filename, brand_name, class_type, abv, net_contents, bottler_name, bottler_address, country_of_origin)
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => setCsvFile(e.target.files?.[0] ?? null)}
+                className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-200 file:px-3 file:py-1.5 file:text-sm file:font-medium"
+              />
+            </label>
+            {csvFile && <p className="mt-1 text-xs text-slate-500">CSV: {csvFile.name}</p>}
+          </div>
+        </details>
 
         <div className="mt-5 flex items-center gap-3">
           <button
@@ -160,7 +217,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Loading skeletons. */}
       {loading && (
         <div className="mt-8 space-y-4" aria-hidden>
           {Array.from({ length: Math.max(files.length, 1) }).map((_, i) => (

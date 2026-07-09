@@ -7,18 +7,19 @@ from pydantic import BaseModel, Field
 
 Severity = Literal["error", "warn", "info"]
 Verdict = Literal["PASS", "WARN", "FAIL"]
+FieldStatus = Literal["pass", "warn", "fail"]
 
 
 class LabelExtraction(BaseModel):
-    """Structured fields Claude extracts from the OCR'd label text.
+    """Structured TTB fields Claude extracts from the OCR'd label text.
 
-    This is the schema passed to the Anthropic structured-output API, so keep it
-    flat and typed. A field is `None` when it is not present on the label.
+    Flat and typed (passed to the structured-output API). A field is `None`
+    when not present on the label.
     """
 
-    brand_name: Optional[str] = Field(None, description="Product / brand name.")
+    brand_name: Optional[str] = Field(None, description="Brand name / fanciful name.")
     class_type: Optional[str] = Field(
-        None, description="Beverage class/type, e.g. 'IPA', 'Cabernet Sauvignon', 'Vodka'."
+        None, description="Class/type designation, e.g. 'IPA', 'Cabernet Sauvignon', 'Vodka'."
     )
     abv: Optional[float] = Field(
         None, description="Alcohol by volume as a percentage number, e.g. 6.5."
@@ -26,33 +27,54 @@ class LabelExtraction(BaseModel):
     net_contents: Optional[str] = Field(
         None, description="Net contents / volume statement, e.g. '750 mL', '12 FL OZ'."
     )
-    producer: Optional[str] = Field(None, description="Producer, bottler, or importer.")
-    government_warning: bool = Field(
-        False,
-        description="True only if the government health warning text is present on the label.",
+    bottler_name: Optional[str] = Field(
+        None, description="Name of the bottler / producer / importer."
+    )
+    bottler_address: Optional[str] = Field(
+        None, description="City and state (and/or full address) of the bottler/importer."
+    )
+    country_of_origin: Optional[str] = Field(
+        None, description="Country of origin, if stated (required for imports)."
+    )
+    government_warning_text: Optional[str] = Field(
+        None,
+        description=(
+            "The government health warning statement copied VERBATIM as printed "
+            "on the label (preserve wording, capitalization, and punctuation). "
+            "Null if no government warning appears."
+        ),
     )
 
 
-class Profile(BaseModel):
-    """Optional expected values to validate the extracted label against."""
+class ApplicationData(BaseModel):
+    """Expected values from the COLA application, to compare the label against.
+
+    Every field is optional — only provided fields are compared; the rest fall
+    back to presence/format checks.
+    """
 
     brand_name: Optional[str] = None
-    abv_percent: Optional[float] = None
+    class_type: Optional[str] = None
+    abv: Optional[float] = None
     net_contents: Optional[str] = None
-    region: Optional[str] = None
+    bottler_name: Optional[str] = None
+    bottler_address: Optional[str] = None
+    country_of_origin: Optional[str] = None
+
+
+class FieldResult(BaseModel):
+    """Per-field validation outcome (three-state)."""
+
+    status: FieldStatus
+    reason: Optional[str] = None
+    extracted: Optional[str] = Field(None, description="Value read from the label.")
+    expected: Optional[str] = Field(None, description="Value from the application, if any.")
 
 
 class Finding(BaseModel):
     code: str
     severity: Severity
     message: str
-
-
-class FieldResult(BaseModel):
-    """Deterministic per-field validation outcome."""
-
-    passed: bool
-    reason: Optional[str] = None
 
 
 class Timings(BaseModel):
@@ -67,11 +89,9 @@ class ImageResult(BaseModel):
     verdict: Verdict
     fields: LabelExtraction
     ocr_text: str = Field("", description="Raw text extracted by OCR.")
-    ocr_confidence: float = Field(
-        0.0, description="Mean OCR confidence (0-100) for the image."
-    )
-    findings: list[Finding] = []
+    ocr_confidence: float = Field(0.0, description="Mean OCR confidence (0-100).")
     field_validation: dict[str, FieldResult] = {}
+    findings: list[Finding] = []
     timings: Timings = Timings()
     error: Optional[str] = None
 

@@ -11,7 +11,7 @@ from typing import Optional
 
 from app.config import get_settings
 from app.rules.validate import validate_label
-from app.schemas import Finding, ImageResult, LabelExtraction, Profile, Timings
+from app.schemas import ApplicationData, Finding, ImageResult, LabelExtraction, Timings
 from app.services.extract import ExtractionError, ExtractionTimeout, extract_fields
 from app.services.image import load_and_normalize
 from app.services.ocr import run_ocr
@@ -24,7 +24,7 @@ def _ms_since(start: float) -> int:
 
 
 def process_image(
-    filename: str, raw: bytes, profile: Optional[Profile] = None
+    filename: str, raw: bytes, application: Optional[ApplicationData] = None
 ) -> ImageResult:
     settings = get_settings()
     overall_start = time.perf_counter()
@@ -102,9 +102,8 @@ def process_image(
     rules_start = time.perf_counter()
     verdict, field_validation, warnings = validate_label(
         extraction,
-        ocr_text=ocr.text,
         ocr_confidence=ocr.mean_confidence,
-        profile=profile,
+        application=application,
         ocr_threshold=settings.ocr_confidence_threshold,
     )
     timings.rules_ms = _ms_since(rules_start)

@@ -1,62 +1,83 @@
-"""Verdict roll-up and soft-warning tests for the unified engine."""
+"""Strict government-warning + fuzzy application-comparison tests."""
 from __future__ import annotations
 
-from app.rules.validate import REQUIRED_WARNING_PHRASE, validate_label
-from app.schemas import LabelExtraction, Profile
-
-COMPLIANT = LabelExtraction(
-    brand_name="Old Mill IPA",
-    class_type="IPA",
-    abv=6.5,
-    net_contents="355 mL",
-    producer="Old Mill Brewing",
-    government_warning=True,
+from app.rules.validate import (
+    CANONICAL_GOV_WARNING,
+    check_government_warning,
+    validate_label,
 )
-WARNING_TEXT = f"{REQUIRED_WARNING_PHRASE} According to the Surgeon General..."
-HIGH_CONF = 90.0
+from app.schemas import ApplicationData, LabelExtraction
+
+BASE = LabelExtraction(
+    brand_name="Stone's Throw Lager",
+    class_type="Lager",
+    abv=5.0,
+    net_contents="12 FL OZ",
+    bottler_name="Stone's Throw Brewing",
+    bottler_address="Austin, TX",
+    country_of_origin="USA",
+    government_warning_text=CANONICAL_GOV_WARNING,
+)
 
 
-def codes(findings):
-    return {f.code for f in findings}
+# --- Government warning strictness ---------------------------------------
+
+def test_exact_warning_passes():
+    assert check_government_warning(CANONICAL_GOV_WARNING).status == "pass"
 
 
-def test_low_ocr_confidence_warns():
-    verdict, _, warnings = validate_label(COMPLIANT, WARNING_TEXT, ocr_confidence=10.0)
-    assert verdict == "WARN"
-    assert "LOW_OCR_CONFIDENCE" in codes(warnings)
+def test_warning_whitespace_normalized_passes():
+    noisy = "  GOVERNMENT WARNING:  (1) According to the Surgeon General, women " \
+        "should not drink alcoholic beverages during pregnancy because of the " \
+        "risk of birth defects. (2) Consumption of alcoholic beverages impairs " \
+        "your ability to drive a car or operate machinery, and may cause health problems."
+    assert check_government_warning(noisy).status == "pass"
 
 
-def test_brand_mismatch_against_profile_warns():
-    profile = Profile(brand_name="Different Brand")
-    verdict, _, warnings = validate_label(COMPLIANT, WARNING_TEXT, HIGH_CONF, profile)
-    assert verdict == "WARN"
-    assert "BRAND_MISMATCH" in codes(warnings)
+def test_warning_wrong_case_warns():
+    lowered = CANONICAL_GOV_WARNING.replace("GOVERNMENT WARNING:", "Government Warning:")
+    assert check_government_warning(lowered).status == "warn"
 
 
-def test_brand_substring_match_against_profile_passes():
-    profile = Profile(brand_name="Old Mill")  # substring of extracted brand
-    verdict, _, warnings = validate_label(COMPLIANT, WARNING_TEXT, HIGH_CONF, profile)
-    assert verdict == "PASS"
-    assert "BRAND_MISMATCH" not in codes(warnings)
+def test_warning_missing_fails():
+    assert check_government_warning(None).status == "fail"
 
 
-def test_abv_mismatch_against_profile_warns():
-    profile = Profile(abv_percent=5.0)
-    verdict, _, warnings = validate_label(COMPLIANT, WARNING_TEXT, HIGH_CONF, profile)
-    assert verdict == "WARN"
-    assert "ABV_MISMATCH" in codes(warnings)
+def test_warning_substantively_different_fails():
+    assert check_government_warning("Drink responsibly. Do not drive.").status == "fail"
+
+
+# --- Fuzzy application comparison (Dave Morrison's STONE'S THROW) --------
+
+def test_apostrophe_case_difference_warns_not_fails():
+    # Label says "Stone's Throw Lager"; application typed "STONES THROW LAGER".
+    app = ApplicationData(brand_name="STONES THROW LAGER")
+    verdict, fields, _ = validate_label(BASE, 90.0, application=app)
+    assert fields["brand_name"].status == "warn"
+    assert verdict in ("WARN", "PASS") and verdict != "FAIL"
+
+
+def test_exact_application_match_passes():
+    app = ApplicationData(brand_name="Stone's Throw Lager", abv=5.0)
+    _, fields, _ = validate_label(BASE, 90.0, application=app)
+    assert fields["brand_name"].status == "pass"
+    assert fields["abv"].status == "pass"
+
+
+def test_substantive_brand_mismatch_fails():
+    app = ApplicationData(brand_name="Completely Different Ale")
+    verdict, fields, _ = validate_label(BASE, 90.0, application=app)
+    assert fields["brand_name"].status == "fail"
+    assert verdict == "FAIL"
+
+
+def test_abv_beyond_tolerance_fails():
+    app = ApplicationData(abv=9.0)  # label is 5.0
+    _, fields, _ = validate_label(BASE, 90.0, application=app)
+    assert fields["abv"].status == "fail"
 
 
 def test_abv_within_tolerance_passes():
-    profile = Profile(abv_percent=6.6)  # within 0.3 tolerance of 6.5
-    _, _, warnings = validate_label(COMPLIANT, WARNING_TEXT, HIGH_CONF, profile)
-    assert "ABV_MISMATCH" not in codes(warnings)
-
-
-def test_field_failure_outranks_warning_in_verdict():
-    ext = COMPLIANT.model_copy(update={"net_contents": None})
-    # Also trigger a soft warning via low confidence.
-    verdict, fields, warnings = validate_label(ext, WARNING_TEXT, ocr_confidence=10.0)
-    assert verdict == "FAIL"  # a failed field outranks any warning
-    assert fields["net_contents"].passed is False
-    assert "LOW_OCR_CONFIDENCE" in codes(warnings)
+    app = ApplicationData(abv=5.2)  # within 0.3 of 5.0
+    _, fields, _ = validate_label(BASE, 90.0, application=app)
+    assert fields["abv"].status == "pass"

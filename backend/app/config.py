@@ -28,6 +28,8 @@ class Settings:
         # higher accuracy at the cost of latency.
         self.extraction_model: str = os.environ.get("EXTRACTION_MODEL", "claude-haiku-4-5")
         self.max_files: int = _get_int("MAX_FILES", 10)
+        # Concurrent images per batch. Bounded to protect memory on small hosts.
+        self.batch_concurrency: int = _get_int("BATCH_CONCURRENCY", 3)
         self.max_file_bytes: int = _get_int("MAX_FILE_MB", 10) * 1024 * 1024
         # Smaller long-edge => faster OCR. 1280 keeps label text legible while
         # cutting Tesseract CPU time on constrained hosts.

@@ -1,6 +1,7 @@
 // Mirror of the backend Pydantic schemas (app/schemas.py).
 
 export type Verdict = "PASS" | "WARN" | "FAIL";
+export type FieldStatus = "pass" | "warn" | "fail";
 export type Severity = "error" | "warn" | "info";
 
 export interface LabelExtraction {
@@ -8,13 +9,17 @@ export interface LabelExtraction {
   class_type: string | null;
   abv: number | null;
   net_contents: string | null;
-  producer: string | null;
-  government_warning: boolean;
+  bottler_name: string | null;
+  bottler_address: string | null;
+  country_of_origin: string | null;
+  government_warning_text: string | null;
 }
 
 export interface FieldResult {
-  passed: boolean;
+  status: FieldStatus;
   reason: string | null;
+  extracted: string | null;
+  expected: string | null;
 }
 
 export interface Finding {
@@ -36,8 +41,26 @@ export interface ImageResult {
   fields: LabelExtraction;
   ocr_text: string;
   ocr_confidence: number;
-  findings: Finding[];
   field_validation: Record<string, FieldResult>;
+  findings: Finding[];
   timings: Timings;
   error: string | null;
+}
+
+export interface Summary {
+  total: number;
+  passed: number;
+  warned: number;
+  failed: number;
+}
+
+// Expected values from the COLA application (all optional).
+export interface ApplicationData {
+  brand_name?: string;
+  class_type?: string;
+  abv?: number;
+  net_contents?: string;
+  bottler_name?: string;
+  bottler_address?: string;
+  country_of_origin?: string;
 }
