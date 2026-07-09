@@ -145,6 +145,10 @@ python eval/run_eval.py            # OCR vs vision -> results/latest.md
 
 The scoring logic is pure and unit-tested (`tests/test_eval_scoring.py`).
 
+**Measured performance:** a live run over 7 labels (vision mode) completed in
+1.7–2.8s each (median 2.5s) — under the ≤5s target with ~2× headroom. See
+[`backend/eval/deployed-run.md`](./backend/eval/deployed-run.md).
+
 ## Assumptions & Tradeoffs
 
 - **Prototype scope vs. full TTB compliance** — implements the core checks
