@@ -223,12 +223,17 @@ Verdict roll-up: any field `fail` → FAIL; else any `warn` → WARN; else PASS.
   middle ground between a naive sequential loop and a full async job queue.
 - **No DB/auth** → results live only in the response; nothing persisted. Acceptable
   for MVP demo.
-- **OCR vs. vision (both implemented).** `EXTRACTION_MODE=ocr` (default) sends
-  OCR text to Claude; `EXTRACTION_MODE=vision` sends the image directly to a
-  multimodal model — the natural path for stylized/curved labels, at higher token
-  cost. `backend/eval/` measures accuracy + latency for both so the default is
-  evidence-based. (Auto-switching to vision on low OCR confidence is a possible
-  future refinement; today low confidence surfaces a `LOW_OCR_CONFIDENCE` warning.)
+- **OCR vs. vision (both implemented).** `EXTRACTION_MODE=vision` (default) sends
+  the image directly to a multimodal model — most robust on real photos;
+  `EXTRACTION_MODE=ocr` sends Tesseract text (cheaper on clean scans).
+  `backend/eval/` measures accuracy + latency for both.
+- **Low-confidence handling (OCR mode).** When OCR mean confidence is below
+  threshold, a field that couldn't be read is reported as a "couldn't read —
+  retry" **WARN** rather than a hard FAIL, so a blurry photo goes to human review
+  instead of being rejected like a genuinely non-compliant label. (Vision mode
+  has no OCR-confidence proxy, so this applies to OCR mode.)
+- **Placeholder guard.** Extracted placeholder strings (`<UNKNOWN>`, `N/A`, …)
+  are normalized to null so they can't pass a presence check as real values.
 - **Latency guard (implemented).** An Anthropic client timeout (~4s,
   `EXTRACTION_TIMEOUT_S`) plus a low `max_tokens` protect the 5s budget; on
   timeout the image degrades to OCR-only with an `EXTRACTION_TIMEOUT` warning

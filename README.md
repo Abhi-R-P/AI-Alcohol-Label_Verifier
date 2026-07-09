@@ -123,9 +123,11 @@ Extraction defaults to `claude-haiku-4-5` to keep per-image latency under the
 `EXTRACTION_MODEL=claude-sonnet-4-6` (or `claude-opus-4-8`) in `backend/.env`.
 
 Two extraction strategies are supported via `EXTRACTION_MODE`:
-- `ocr` (default) — Tesseract lifts text, Claude structures it. Small input, fast, cheap.
-- `vision` — the image is sent directly to Claude's vision model (no OCR). Often
-  more robust on stylized/curved labels, at higher token cost.
+- `vision` (default) — the image is sent directly to Claude's vision model (no
+  OCR). Most robust on real-world photos (angles, glare, stylized/curved labels).
+- `ocr` — Tesseract lifts text, Claude structures it. Cheaper for clean scans;
+  also emits an OCR-confidence signal that, when low, downgrades unreadable fields
+  to a "couldn't read — retry" WARN rather than a hard FAIL.
 
 See [`backend/eval/`](./backend/eval/README.md) for a harness that measures
 field-level accuracy and latency and **compares the two modes** head-to-head.

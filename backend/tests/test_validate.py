@@ -66,8 +66,31 @@ def test_low_ocr_confidence_warns():
     assert any(w.code == "LOW_OCR_CONFIDENCE" for w in warnings)
 
 
-def test_field_fail_outranks_warn():
+def test_missing_field_at_high_confidence_fails():
     ext = COMPLIANT.model_copy(update={"net_contents": None})
-    verdict, fields, _ = validate_label(ext, ocr_confidence=10.0)
+    verdict, fields, _ = validate_label(ext, ocr_confidence=HIGH_CONF)
     assert verdict == "FAIL"
     assert fields["net_contents"].status == "fail"
+
+
+def test_low_confidence_downgrades_missing_to_warn():
+    # A field we couldn't read on a low-quality image -> WARN "couldn't read",
+    # not FAIL "missing" (goes to human review rather than rejection).
+    ext = COMPLIANT.model_copy(update={"net_contents": None, "abv": None})
+    verdict, fields, warnings = validate_label(ext, ocr_confidence=10.0)
+    assert verdict == "WARN"
+    assert fields["net_contents"].status == "warn"
+    assert fields["abv"].status == "warn"
+    assert any(w.code == "LOW_OCR_CONFIDENCE" for w in warnings)
+
+
+def test_low_confidence_does_not_mask_a_present_mismatch():
+    # A present value that mismatches the application still FAILs even at low conf.
+    from app.schemas import ApplicationData
+
+    verdict, fields, _ = validate_label(
+        COMPLIANT, ocr_confidence=10.0,
+        application=ApplicationData(brand_name="Completely Different Ale"),
+    )
+    assert fields["brand_name"].status == "fail"
+    assert verdict == "FAIL"

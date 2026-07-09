@@ -27,8 +27,8 @@ class Settings:
         # Override with EXTRACTION_MODEL=claude-sonnet-4-6 / claude-opus-4-8 for
         # higher accuracy at the cost of latency.
         self.extraction_model: str = os.environ.get("EXTRACTION_MODEL", "claude-haiku-4-5")
-        # "ocr" (Tesseract -> text -> Claude) or "vision" (image -> Claude).
-        self.extraction_mode: str = os.environ.get("EXTRACTION_MODE", "ocr").strip().lower()
+        # "vision" (image -> Claude, best on real photos) or "ocr" (Tesseract text -> Claude).
+        self.extraction_mode: str = os.environ.get("EXTRACTION_MODE", "vision").strip().lower()
         self.max_files: int = _get_int("MAX_FILES", 10)
         # Concurrent images per batch. Bounded to protect memory on small hosts.
         self.batch_concurrency: int = _get_int("BATCH_CONCURRENCY", 3)

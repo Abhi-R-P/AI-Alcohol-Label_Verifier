@@ -114,6 +114,7 @@ def healthz() -> dict:
         "tesseract": shutil.which("tesseract") is not None,
         "api_key_configured": bool(settings.anthropic_api_key),
         "model": settings.extraction_model,
+        "mode": settings.extraction_mode,
     }
 
 

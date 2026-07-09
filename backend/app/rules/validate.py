@@ -236,6 +236,22 @@ def validate_label(
             )
         )
 
+    # Low-quality image: a field we simply couldn't read shouldn't be reported
+    # the same as a genuinely non-compliant one. Downgrade "missing" fails to a
+    # "couldn't read" warning so the label goes to human review, not rejection.
+    # (Only applies in OCR mode, where a confidence signal exists.)
+    if ocr_confidence < ocr_threshold:
+        for key, res in results.items():
+            if res.status == "fail" and res.extracted is None:
+                results[key] = FieldResult(
+                    status="warn",
+                    reason=(
+                        "Could not read this field — the image may be low quality; "
+                        "retry with a clearer, straight-on photo."
+                    ),
+                    expected=res.expected,
+                )
+
     # Verdict roll-up: any fail -> FAIL; else any warn (field or soft) -> WARN.
     statuses = [r.status for r in results.values()]
     if "fail" in statuses:
