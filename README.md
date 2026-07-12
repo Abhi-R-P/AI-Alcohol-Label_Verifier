@@ -1,11 +1,20 @@
 # AI Alcohol Label Verifier
 
-Batch-verify alcohol product labels. Each uploaded image is OCR'd, structured
-into typed fields by the Claude API, and checked against a deterministic
-rule-based validation layer that returns a `PASS` / `WARN` / `FAIL` verdict with
-itemized findings.
+Batch-verify alcohol product labels. Each uploaded image is read by Claude
+(vision by default, or OCR), structured into typed TTB fields, and checked
+against a deterministic rule-based validation layer that returns a
+`PASS` / `WARN` / `FAIL` verdict with per-field findings.
 
-See [`DESIGN.md`](./DESIGN.md) for the architecture, request flow, and trade-offs.
+## Live demo
+
+**https://ai-alcohol-label-verifier.vercel.app/**
+
+The backend runs on a free tier that sleeps after ~15 min idle, so the *first*
+request may take up to ~60s to wake, then it's fast (~2–3s/label). If the first
+upload errors, retry once.
+
+See [`DESIGN.md`](./DESIGN.md) for the architecture, request flow, and trade-offs,
+and [`DEPLOY.md`](./DEPLOY.md) for deployment.
 
 ```
 Next.js (upload + results)  ──POST /verify──▶  FastAPI
@@ -115,6 +124,17 @@ npm install
 cp .env.local.example .env.local   # NEXT_PUBLIC_API_BASE defaults to http://localhost:8000
 npm run dev                        # http://localhost:3000
 ```
+
+## Environment variables
+
+**Backend** (`backend/.env`):
+- `ANTHROPIC_API_KEY` — **required**. Your Claude API key.
+- `CORS_ORIGINS` — required in production. Allowed frontend origin(s), comma-separated.
+- `EXTRACTION_MODE` — optional, default `vision` (`vision` | `ocr`).
+- `EXTRACTION_MODEL` — optional, default `claude-haiku-4-5`.
+
+**Frontend** (`frontend/.env.local`):
+- `NEXT_PUBLIC_API_BASE` — **required**. Backend URL (default `http://localhost:8000`). Build-time.
 
 ## Model & extraction mode
 
