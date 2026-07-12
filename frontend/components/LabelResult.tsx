@@ -12,11 +12,12 @@ const FIELD_LABELS: Record<string, string> = {
 };
 const FIELD_ORDER = Object.keys(FIELD_LABELS);
 
-const STATUS_ICON: Record<FieldStatus, string> = { pass: "✓", warn: "!", fail: "✗" };
+const STATUS_ICON: Record<FieldStatus, string> = { pass: "✓", warn: "!", fail: "✗", info: "–" };
 const STATUS_DOT: Record<FieldStatus, string> = {
   pass: "bg-green-600",
   warn: "bg-amber-500",
   fail: "bg-red-600",
+  info: "bg-slate-300",
 };
 const VERDICT_BANNER: Record<Verdict, string> = {
   PASS: "bg-green-50 text-green-800",
@@ -41,7 +42,7 @@ export default function LabelResult({
     ...FIELD_ORDER.filter((k) => k in checks),
     ...Object.keys(checks).filter((k) => !FIELD_ORDER.includes(k)),
   ];
-  const counts = { pass: 0, warn: 0, fail: 0 } as Record<FieldStatus, number>;
+  const counts = { pass: 0, warn: 0, fail: 0, info: 0 } as Record<FieldStatus, number>;
   for (const k of rows) counts[checks[k].status]++;
 
   return (
@@ -95,7 +96,15 @@ export default function LabelResult({
                   <p className="text-xs text-slate-400">Application: {r.expected}</p>
                 )}
                 {r.status !== "pass" && r.reason && (
-                  <p className={`text-sm ${r.status === "fail" ? "text-red-700" : "text-amber-700"}`}>
+                  <p
+                    className={`text-sm ${
+                      r.status === "fail"
+                        ? "text-red-700"
+                        : r.status === "warn"
+                          ? "text-amber-700"
+                          : "text-slate-400"
+                    }`}
+                  >
                     {r.reason}
                   </p>
                 )}

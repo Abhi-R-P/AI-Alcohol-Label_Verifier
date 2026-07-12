@@ -220,7 +220,10 @@ def validate_label(
         elif _collapse_ws(extracted):
             results[key] = _ok(extracted=_collapse_ws(extracted))
         else:
-            results[key] = FieldResult(status="pass", reason="Not stated (optional).")
+            # Absent optional field -> neutral "info", not a green PASS.
+            results[key] = FieldResult(
+                status="info", reason="Not stated (optional — required only for imports)."
+            )
 
     # Soft warnings.
     warnings: list[Finding] = []
@@ -265,7 +268,8 @@ def validate_label(
 
 
 def is_compliant(results: dict[str, FieldResult]) -> bool:
-    return all(r.status == "pass" for r in results.values())
+    # "info" (optional & absent) is neutral — doesn't break compliance.
+    return all(r.status in ("pass", "info") for r in results.values())
 
 
 def rule_catalog() -> list[RuleInfo]:

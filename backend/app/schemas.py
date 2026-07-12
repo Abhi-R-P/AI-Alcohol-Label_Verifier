@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 
 Severity = Literal["error", "warn", "info"]
 Verdict = Literal["PASS", "WARN", "FAIL"]
-FieldStatus = Literal["pass", "warn", "fail"]
+FieldStatus = Literal["pass", "warn", "fail", "info"]  # info = neutral (e.g. optional & absent)
 
 # Placeholder strings a model may emit instead of null for an unreadable field.
 # These must NOT be treated as real extracted values.

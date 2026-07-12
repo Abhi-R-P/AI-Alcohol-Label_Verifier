@@ -53,11 +53,19 @@ def test_abv_out_of_range_fails():
     assert "between 0 and 100" in fields["abv"].reason
 
 
-def test_country_of_origin_optional_when_absent():
+def test_country_of_origin_optional_absent_is_info_not_pass():
+    # An absent optional field must be neutral "info" (not a green PASS), and
+    # must not fail the overall verdict.
     ext = COMPLIANT.model_copy(update={"country_of_origin": None})
     verdict, fields, _ = validate_label(ext, HIGH_CONF)
-    assert fields["country_of_origin"].status == "pass"
+    assert fields["country_of_origin"].status == "info"
+    assert fields["country_of_origin"].extracted is None
     assert verdict == "PASS"
+
+
+def test_country_of_origin_present_passes():
+    verdict, fields, _ = validate_label(COMPLIANT, HIGH_CONF)  # has "USA"
+    assert fields["country_of_origin"].status == "pass"
 
 
 def test_low_ocr_confidence_warns():

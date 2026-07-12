@@ -1,7 +1,7 @@
 // Mirror of the backend Pydantic schemas (app/schemas.py).
 
 export type Verdict = "PASS" | "WARN" | "FAIL";
-export type FieldStatus = "pass" | "warn" | "fail";
+export type FieldStatus = "pass" | "warn" | "fail" | "info";
 export type Severity = "error" | "warn" | "info";
 
 export interface LabelExtraction {
