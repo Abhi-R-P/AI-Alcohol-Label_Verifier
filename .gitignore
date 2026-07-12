@@ -11,5 +11,9 @@ node_modules/
 .next/
 frontend/.env.local
 
+# Env / secrets (never commit real keys; *.example files stay tracked)
+.env
+.env.local
+
 # OS
 .DS_Store

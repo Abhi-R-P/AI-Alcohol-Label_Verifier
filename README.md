@@ -207,3 +207,25 @@ were reviewed and implemented as part of the development process.
 
 The compliance determination logic remains fully deterministic and is not
 generated at runtime by an LLM.
+
+## Security & Privacy Notes
+
+This is a prototype. The following security considerations apply:
+
+**API Key Management**
+API keys are managed via environment variables and never committed to source control. A `.env.example` file is provided with placeholder values. Confirm `.env` is listed in `.gitignore` before deploying or sharing the repository.
+
+**Data Handling**
+No label images or extracted data are persisted — all processing is in-memory and session-scoped. Nothing is logged or stored between requests.
+
+**Third-Party API Transmission**
+Images are transmitted to Anthropic's API for processing. A production deployment would require a data processing agreement and routing through FedRAMP-compliant infrastructure (e.g. Anthropic available via Azure Government marketplace).
+
+**Authentication**
+No authentication layer is included — appropriate for a standalone proof-of-concept. A production build would integrate with TTB's existing identity provider.
+
+**CORS Policy**
+CORS is open (`allow_origins=["*"]`) for prototype convenience and would be restricted to internal TTB domains in production.
+
+**Federal Network Dependency**
+This prototype calls `api.anthropic.com` directly. In federal network environments where outbound traffic to external ML endpoints is blocked (as noted by TTB IT), this would fail. The production path is to route through Azure API Management inside Treasury's Azure Government boundary.

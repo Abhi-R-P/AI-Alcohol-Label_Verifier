@@ -11,7 +11,7 @@ installs Tesseract, which OCR requires).
 1. Render → **New → Blueprint** → connect this repo/branch. It reads `render.yaml`
    and creates the `label-verifier-api` service (Docker, root `backend/`).
 2. When prompted, set the secret env vars:
-   - `ANTHROPIC_API_KEY = sk-ant-…`
+   - `ANTHROPIC_API_KEY = your_anthropic_api_key_here`
    - `CORS_ORIGINS = https://<your-frontend>.vercel.app`  (exact origin, no trailing slash)
 3. Apply, then verify:
    ```bash
